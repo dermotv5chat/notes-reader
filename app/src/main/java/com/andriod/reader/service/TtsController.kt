@@ -15,7 +15,6 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import androidx.core.app.NotificationCompat
-import androidx.media.session.MediaButtonReceiver
 import com.andriod.reader.MainActivity
 import com.andriod.reader.R
 import com.andriod.reader.data.local.MarkdownPlainText
@@ -35,6 +34,7 @@ class TtsController(
     private var onSegmentChanged: (Int, Int) -> Unit,
     private var onPlaybackStateChanged: (Boolean) -> Unit,
     private var onSpeakError: (String) -> Unit,
+    private val onSessionChanged: () -> Unit = {},
 ) : TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ready = false
@@ -55,6 +55,8 @@ class TtsController(
     private var audioFocusRequest: AudioFocusRequest? = null
 
     private var awaitingInitAttemptId = 0
+    private var currentFileName: String? = null
+    private var currentTitle: String? = null
 
     fun init() {
         // Actual engine startup happens in awaitReady() on the main thread.
@@ -80,10 +82,12 @@ class TtsController(
                     if (currentIndex < segments.lastIndex) {
                         currentIndex++
                         onSegmentChanged(currentIndex, segments.size)
+                        notifySessionChanged()
                         speakCurrent()
                     } else if (TtsPlaybackEndAction.shouldRestartAfterLastSegment(loopEnabled)) {
                         currentIndex = 0
                         onSegmentChanged(currentIndex, segments.size)
+                        notifySessionChanged()
                         speakCurrent()
                     } else {
                         stop()
@@ -117,6 +121,17 @@ class TtsController(
     }
 
     fun attemptedEngineLabels(): List<String> = attemptedEngines.toList()
+
+    fun isReady(): Boolean = ready
+
+    fun playbackSnapshot(): TtsPlaybackSession = TtsPlaybackSession(
+        fileName = currentFileName,
+        title = currentTitle,
+        segmentIndex = currentIndex,
+        segmentTotal = segments.size,
+        isPlaying = isPlaying.get() && !isPaused.get(),
+        isPaused = isPlaying.get() && isPaused.get(),
+    )
 
     fun updateCallbacks(
         onSegmentChanged: (Int, Int) -> Unit,
@@ -239,7 +254,7 @@ class TtsController(
         shutdownEngineOnly()
     }
 
-    fun start(text: String) {
+    fun start(fileName: String, title: String, text: String) {
         if (!ready) {
             onSpeakError("语音引擎尚未就绪")
             return
@@ -255,11 +270,14 @@ class TtsController(
             onSpeakError("没有可朗读的正文")
             return
         }
+        currentFileName = fileName
+        currentTitle = title
         currentIndex = 0
         isPlaying.set(true)
         isPaused.set(false)
         onSegmentChanged(currentIndex, segments.size)
         onPlaybackStateChanged(true)
+        notifySessionChanged()
         speakCurrent()
     }
 
@@ -268,12 +286,14 @@ class TtsController(
         tts?.stop()
         isPaused.set(true)
         onPlaybackStateChanged(false)
+        notifySessionChanged()
     }
 
     fun resume() {
         if (!isPlaying.get() || !isPaused.get()) return
         isPaused.set(false)
         onPlaybackStateChanged(true)
+        notifySessionChanged()
         speakCurrent()
     }
 
@@ -283,7 +303,12 @@ class TtsController(
         isPlaying.set(false)
         isPaused.set(false)
         currentIndex = 0
+        segments.clear()
+        currentFileName = null
+        currentTitle = null
+        onSegmentChanged(0, 0)
         onPlaybackStateChanged(false)
+        notifySessionChanged()
     }
 
     fun nextSegment() {
@@ -291,8 +316,13 @@ class TtsController(
             tts?.stop()
             currentIndex++
             onSegmentChanged(currentIndex, segments.size)
+            notifySessionChanged()
             if (isPlaying.get() && !isPaused.get()) speakCurrent()
         }
+    }
+
+    private fun notifySessionChanged() {
+        onSessionChanged()
     }
 
     fun shutdown() {
@@ -410,63 +440,6 @@ class TtsController(
     }
 }
 
-object TtsPlaybackManager {
-    private var controller: TtsController? = null
-
-    private fun settingsStore(context: Context): SettingsStore {
-        return EntryPointAccessors.fromApplication(
-            context.applicationContext,
-            TtsServiceEntryPoint::class.java,
-        ).settingsStore()
-    }
-
-    fun getOrCreate(
-        context: Context,
-        onSegmentChanged: (Int, Int) -> Unit,
-        onPlaybackStateChanged: (Boolean) -> Unit,
-        onSpeakError: (String) -> Unit = {},
-    ): TtsController {
-        val existing = controller
-        if (existing != null) {
-            existing.updateCallbacks(onSegmentChanged, onPlaybackStateChanged, onSpeakError)
-            return existing
-        }
-        return TtsController(
-            context = context,
-            settingsStore = settingsStore(context),
-            onSegmentChanged = onSegmentChanged,
-            onPlaybackStateChanged = onPlaybackStateChanged,
-            onSpeakError = onSpeakError,
-        ).also {
-            controller = it
-        }
-    }
-
-    fun getOrNull(): TtsController? = controller
-
-    suspend fun awaitReady(context: Context): TtsController {
-        val ctrl = getOrCreate(context, { _, _ -> }, {}, {})
-        ctrl.awaitReady(context)
-        return ctrl
-    }
-
-    fun release() {
-        controller?.shutdown()
-        controller = null
-    }
-
-    fun reinitialize(context: Context) {
-        release()
-        getOrCreate(context, { _, _ -> }, {}, {})
-    }
-
-    suspend fun ensureReady(context: Context): TtsController {
-        val ctrl = getOrNull() ?: getOrCreate(context, { _, _ -> }, {}, {})
-        ctrl.awaitReady(context)
-        return ctrl
-    }
-}
-
 object TtsNotificationHelper {
     const val CHANNEL_ID = "tts_playback"
     const val NOTIFICATION_ID = 1001
@@ -483,39 +456,51 @@ object TtsNotificationHelper {
         }
     }
 
-    fun buildNotification(context: Context, title: String, isPlaying: Boolean): Notification {
+    fun buildNotification(context: Context, session: TtsPlaybackSession): Notification {
+        val title = session.title ?: "语音朗读"
+        val contentText = when {
+            session.isPlaying && session.segmentTotal > 0 ->
+                "段落 ${session.segmentIndex + 1} / ${session.segmentTotal}"
+            session.isPaused -> "已暂停"
+            session.isPlaying -> "正在朗读"
+            else -> "已停止"
+        }
+        val openReaderIntent = Intent(context, MainActivity::class.java).apply {
+            session.fileName?.let { putExtra(TtsPlaybackService.EXTRA_FILE_NAME, it) }
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
         val contentIntent = PendingIntent.getActivity(
             context,
             0,
-            Intent(context, MainActivity::class.java),
+            openReaderIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        val playPauseAction = if (isPlaying) {
+        val playPauseAction = if (session.isPlaying) {
             NotificationCompat.Action(
                 android.R.drawable.ic_media_pause,
                 "暂停",
-                MediaButtonReceiver.buildMediaButtonPendingIntent(
-                    context,
-                    android.view.KeyEvent.KEYCODE_MEDIA_PAUSE.toLong(),
-                ),
+                TtsPlaybackService.actionPendingIntent(context, TtsPlaybackService.ACTION_PLAY_PAUSE),
             )
         } else {
             NotificationCompat.Action(
                 android.R.drawable.ic_media_play,
                 "播放",
-                MediaButtonReceiver.buildMediaButtonPendingIntent(
-                    context,
-                    android.view.KeyEvent.KEYCODE_MEDIA_PLAY.toLong(),
-                ),
+                TtsPlaybackService.actionPendingIntent(context, TtsPlaybackService.ACTION_PLAY_PAUSE),
             )
         }
+        val stopAction = NotificationCompat.Action(
+            android.R.drawable.ic_menu_close_clear_cancel,
+            "停止",
+            TtsPlaybackService.actionPendingIntent(context, TtsPlaybackService.ACTION_STOP),
+        )
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(title)
-            .setContentText(if (isPlaying) "正在朗读" else "已暂停")
+            .setContentText(contentText)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(contentIntent)
             .addAction(playPauseAction)
-            .setOngoing(isPlaying)
+            .addAction(stopAction)
+            .setOngoing(session.hasActiveSession)
             .build()
     }
 }

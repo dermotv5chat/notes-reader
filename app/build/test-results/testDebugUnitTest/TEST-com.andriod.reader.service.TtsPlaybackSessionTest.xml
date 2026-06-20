@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.andriod.reader.service.TtsPlaybackSessionTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-06-20T12:14:59" hostname="WILL-WIN" time="0.001">
+  <properties/>
+  <testcase name="noActiveSession_whenFileNameMissing" classname="com.andriod.reader.service.TtsPlaybackSessionTest" time="0.0"/>
+  <testcase name="noActiveSession_whenStopped" classname="com.andriod.reader.service.TtsPlaybackSessionTest" time="0.0"/>
+  <testcase name="hasActiveSession_whenPaused" classname="com.andriod.reader.service.TtsPlaybackSessionTest" time="0.0"/>
+  <testcase name="hasActiveSession_whenPlaying" classname="com.andriod.reader.service.TtsPlaybackSessionTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

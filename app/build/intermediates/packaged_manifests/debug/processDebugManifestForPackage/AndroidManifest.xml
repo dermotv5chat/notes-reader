@@ -46,6 +46,11 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name="com.andriod.reader.service.TtsPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="com.andriod.reader.androidx-startup"

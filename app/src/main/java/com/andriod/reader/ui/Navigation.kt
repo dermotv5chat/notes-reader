@@ -12,6 +12,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -41,11 +42,22 @@ object Routes {
 }
 
 @Composable
-fun ReaderApp() {
+fun ReaderApp(
+    openReaderFileName: String? = null,
+    onOpenReaderConsumed: () -> Unit = {},
+) {
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val showBottomBar = currentRoute == Routes.NOTES || currentRoute == Routes.SETTINGS
+
+    LaunchedEffect(openReaderFileName) {
+        val fileName = openReaderFileName ?: return@LaunchedEffect
+        navController.navigate(Routes.reader(fileName)) {
+            launchSingleTop = true
+        }
+        onOpenReaderConsumed()
+    }
 
     Scaffold(
         bottomBar = {

@@ -40,7 +40,7 @@ fun ReaderScreen(
     }
 
     DisposableEffect(Unit) {
-        onDispose { viewModel.releaseTts() }
+        onDispose { viewModel.detachTtsUi() }
     }
 
     DisposableEffect(uiState.keepScreenOn) {
@@ -67,10 +67,7 @@ fun ReaderScreen(
             TopAppBar(
                 title = { Text(uiState.note?.title ?: "阅读") },
                 navigationIcon = {
-                    IconButton(onClick = {
-                        viewModel.stop()
-                        onBack()
-                    }) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
                     }
                 },

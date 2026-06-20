@@ -142,8 +142,20 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun previewTts() {
+        viewModelScope.launch {
+            save()
+            if (TtsPlaybackManager.session.value.hasActiveSession) {
+                TtsPlaybackManager.stopPlayback()
+            }
+            val controller = TtsPlaybackManager.getOrNull() ?: TtsPlaybackManager.awaitReady(ttsContext())
+            controller.previewSample()
+        }
+    }
+
     fun refreshTtsInfo() {
         viewModelScope.launch {
+            val wasPlaying = TtsPlaybackManager.session.value.hasActiveSession
             _uiState.update { it.copy(isRefreshingTts = true) }
             TtsPlaybackManager.reinitialize(ttsContext())
             val controller = TtsPlaybackManager.awaitReady(ttsContext())
@@ -152,7 +164,16 @@ class SettingsViewModel @Inject constructor(
             controller.applyVoicePreference(_uiState.value.voicePreference)
             _uiState.value.selectedVoiceId?.let { controller.applySelectedVoice(it) }
             updateDiagnostics(controller)
-            _uiState.update { it.copy(isRefreshingTts = false) }
+            _uiState.update {
+                it.copy(
+                    isRefreshingTts = false,
+                    testMessage = if (wasPlaying) {
+                        "已刷新语音引擎（已停止当前朗读）"
+                    } else {
+                        it.testMessage
+                    },
+                )
+            }
         }
     }
 
@@ -180,14 +201,6 @@ class SettingsViewModel @Inject constructor(
                 voiceOptions = options,
                 selectedVoiceId = activeVoiceId,
             )
-        }
-    }
-
-    fun previewTts() {
-        viewModelScope.launch {
-            save()
-            val controller = TtsPlaybackManager.getOrNull() ?: TtsPlaybackManager.awaitReady(ttsContext())
-            controller.previewSample()
         }
     }
 

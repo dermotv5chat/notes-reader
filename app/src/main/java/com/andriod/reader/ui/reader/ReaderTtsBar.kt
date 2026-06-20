@@ -55,6 +55,21 @@ fun ReaderPlaybackBar(
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
+            uiState.backgroundNoteTitle != null -> {
+                Text(
+                    "正在朗读「${uiState.backgroundNoteTitle}」",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                if (uiState.segmentTotal > 0) {
+                    Text(
+                        "段落 ${uiState.segmentIndex + 1} / ${uiState.segmentTotal}",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+            }
             uiState.segmentTotal > 0 -> {
                 Text(
                     "段落 ${uiState.segmentIndex + 1} / ${uiState.segmentTotal}",
