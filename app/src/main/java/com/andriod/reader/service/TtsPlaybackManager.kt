@@ -66,10 +66,18 @@ object TtsPlaybackManager {
         return ctrl
     }
 
-    fun startPlayback(context: Context, fileName: String, title: String, content: String) {
+    fun startPlayback(
+        context: Context,
+        fileName: String,
+        title: String,
+        content: String,
+        withForegroundService: Boolean = true,
+    ) {
         controller?.start(fileName, title, content)
         syncSession()
-        TtsPlaybackService.ensureStarted(context)
+        if (withForegroundService) {
+            TtsPlaybackService.ensureStarted(context)
+        }
     }
 
     fun togglePlayPause() {

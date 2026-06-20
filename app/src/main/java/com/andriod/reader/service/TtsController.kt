@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -15,6 +16,10 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
+import androidx.media.app.NotificationCompat.MediaStyle
+import android.support.v4.media.session.MediaSessionCompat
 import com.andriod.reader.MainActivity
 import com.andriod.reader.R
 import com.andriod.reader.data.local.MarkdownPlainText
@@ -443,28 +448,35 @@ class TtsController(
 object TtsNotificationHelper {
     const val CHANNEL_ID = "tts_playback"
     const val NOTIFICATION_ID = 1001
+    private const val ALBUM_ART_SIZE_PX = 256
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "语音朗读",
-                NotificationManager.IMPORTANCE_LOW,
+                NotificationManager.IMPORTANCE_DEFAULT,
             )
             val manager = context.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
     }
 
-    fun buildNotification(context: Context, session: TtsPlaybackSession): Notification {
+    fun albumArtBitmap(context: Context): Bitmap {
+        val drawable = ContextCompat.getDrawable(context, R.mipmap.ic_launcher)
+            ?: ContextCompat.getDrawable(context, R.drawable.ic_notification)
+            ?: return Bitmap.createBitmap(ALBUM_ART_SIZE_PX, ALBUM_ART_SIZE_PX, Bitmap.Config.ARGB_8888)
+        return drawable.toBitmap(ALBUM_ART_SIZE_PX, ALBUM_ART_SIZE_PX, Bitmap.Config.ARGB_8888)
+    }
+
+    fun buildNotification(
+        context: Context,
+        session: TtsPlaybackSession,
+        sessionToken: MediaSessionCompat.Token,
+    ): Notification {
         val title = session.title ?: "语音朗读"
-        val contentText = when {
-            session.isPlaying && session.segmentTotal > 0 ->
-                "段落 ${session.segmentIndex + 1} / ${session.segmentTotal}"
-            session.isPaused -> "已暂停"
-            session.isPlaying -> "正在朗读"
-            else -> "已停止"
-        }
+        val contentText = subtitleFor(session)
+        val albumArt = albumArtBitmap(context)
         val openReaderIntent = Intent(context, MainActivity::class.java).apply {
             session.fileName?.let { putExtra(TtsPlaybackService.EXTRA_FILE_NAME, it) }
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -493,15 +505,30 @@ object TtsNotificationHelper {
             "停止",
             TtsPlaybackService.actionPendingIntent(context, TtsPlaybackService.ACTION_STOP),
         )
+        val mediaStyle = MediaStyle()
+            .setMediaSession(sessionToken)
+            .setShowActionsInCompactView(0, 1)
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(contentText)
+            .setSubText("笔记朗读")
             .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(albumArt)
             .setContentIntent(contentIntent)
             .addAction(playPauseAction)
             .addAction(stopAction)
+            .setStyle(mediaStyle)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(session.hasActiveSession)
             .build()
+    }
+
+    private fun subtitleFor(session: TtsPlaybackSession): String = when {
+        session.isPlaying && session.segmentTotal > 0 ->
+            "段落 ${session.segmentIndex + 1} / ${session.segmentTotal}"
+        session.isPaused -> "已暂停"
+        session.isPlaying -> "正在朗读"
+        else -> "已停止"
     }
 }
 

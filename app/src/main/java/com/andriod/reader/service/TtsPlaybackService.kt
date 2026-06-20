@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
+import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.view.KeyEvent
@@ -95,12 +96,33 @@ class TtsPlaybackService : Service() {
     }
 
     private fun updateForeground(session: TtsPlaybackSession) {
+        updateMetadata(session)
         updatePlaybackState(session)
         if (session.hasActiveSession) {
             startForegroundWith(session)
         } else {
             stopForegroundIfIdle()
         }
+    }
+
+    private fun updateMetadata(session: TtsPlaybackSession) {
+        if (!session.hasActiveSession) return
+        val artist = if (session.segmentTotal > 0) {
+            "段落 ${session.segmentIndex + 1} / ${session.segmentTotal}"
+        } else {
+            "笔记朗读"
+        }
+        mediaSession?.setMetadata(
+            MediaMetadataCompat.Builder()
+                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, session.title ?: "语音朗读")
+                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "笔记朗读")
+                .putBitmap(
+                    MediaMetadataCompat.METADATA_KEY_ALBUM_ART,
+                    TtsNotificationHelper.albumArtBitmap(this),
+                )
+                .build(),
+        )
     }
 
     private fun updatePlaybackState(session: TtsPlaybackSession) {
@@ -123,7 +145,8 @@ class TtsPlaybackService : Service() {
     }
 
     private fun startForegroundWith(session: TtsPlaybackSession) {
-        val notification = TtsNotificationHelper.buildNotification(this, session)
+        val token = mediaSession?.sessionToken ?: return
+        val notification = TtsNotificationHelper.buildNotification(this, session, token)
         startForeground(TtsNotificationHelper.NOTIFICATION_ID, notification)
     }
 

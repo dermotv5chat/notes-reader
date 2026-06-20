@@ -1,7 +1,10 @@
 package com.andriod.reader.ui.reader
 
 import android.app.Activity
+import android.os.Build
 import android.view.WindowManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -22,8 +25,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.andriod.reader.util.NotificationPermission
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,13 +41,30 @@ fun ReaderScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val activity = context as? Activity
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        viewModel.onNotificationPermissionResult(granted)
+    }
 
     LaunchedEffect(context) {
         viewModel.initTts(context)
+        viewModel.refreshNotificationPermissionState()
     }
 
-    DisposableEffect(Unit) {
-        onDispose { viewModel.detachTtsUi() }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshNotificationPermissionState()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.detachTtsUi()
+        }
     }
 
     DisposableEffect(uiState.keepScreenOn) {
@@ -76,11 +100,18 @@ fun ReaderScreen(
         bottomBar = {
             ReaderPlaybackBar(
                 uiState = uiState,
-                onTogglePlayPause = viewModel::togglePlayPause,
+                onTogglePlayPause = {
+                    viewModel.onPlayPauseClicked {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            notificationPermissionLauncher.launch(NotificationPermission.permission)
+                        }
+                    }
+                },
                 onStop = viewModel::stop,
                 onNextSegment = viewModel::nextSegment,
                 onToggleLoop = viewModel::toggleLoop,
                 onOpenTtsSettings = viewModel::openTtsSettings,
+                onOpenNotificationSettings = viewModel::openNotificationSettings,
             )
         },
     ) { padding ->

@@ -1,6 +1,7 @@
 package com.andriod.reader.ui
 
 import android.net.Uri
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -13,6 +14,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -20,8 +22,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.andriod.reader.service.TtsPlaybackManager
 import com.andriod.reader.ui.editor.EditorScreen
 import com.andriod.reader.ui.list.NoteListScreen
+import com.andriod.reader.ui.player.TtsMiniPlayerBar
 import com.andriod.reader.ui.reader.ReaderScreen
 import com.andriod.reader.ui.settings.SettingsScreen
 
@@ -49,7 +53,15 @@ fun ReaderApp(
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
+    val session by TtsPlaybackManager.session.collectAsState()
     val showBottomBar = currentRoute == Routes.NOTES || currentRoute == Routes.SETTINGS
+    val isReader = currentRoute?.startsWith("reader") == true
+    val isEditor = currentRoute?.startsWith("editor") == true
+    val showMiniBar = session.hasActiveSession && !isReader && (
+        currentRoute == Routes.NOTES ||
+            currentRoute == Routes.SETTINGS ||
+            isEditor
+        )
 
     LaunchedEffect(openReaderFileName) {
         val fileName = openReaderFileName ?: return@LaunchedEffect
@@ -61,42 +73,58 @@ fun ReaderApp(
 
     Scaffold(
         bottomBar = {
-            if (showBottomBar) {
-                NavigationBar {
-                    NavigationBarItem(
-                        selected = currentRoute == Routes.NOTES,
-                        onClick = {
-                            navController.navigate(Routes.NOTES) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
+            if (showMiniBar || showBottomBar) {
+                Column {
+                    if (showMiniBar) {
+                        TtsMiniPlayerBar(
+                            session = session,
+                            onOpenReader = {
+                                session.fileName?.let { fileName ->
+                                    navController.navigate(Routes.reader(fileName)) {
+                                        launchSingleTop = true
+                                    }
                                 }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(Icons.Default.Home, contentDescription = null) },
-                        label = { Text("笔记") },
-                    )
-                    NavigationBarItem(
-                        selected = currentRoute == Routes.SETTINGS,
-                        onClick = {
-                            navController.navigate(Routes.SETTINGS) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                        label = { Text("设置") },
-                    )
+                            },
+                            onTogglePlayPause = TtsPlaybackManager::togglePlayPause,
+                        )
+                    }
+                    if (showBottomBar) {
+                        NavigationBar {
+                            NavigationBarItem(
+                                selected = currentRoute == Routes.NOTES,
+                                onClick = {
+                                    navController.navigate(Routes.NOTES) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                icon = { Icon(Icons.Default.Home, contentDescription = null) },
+                                label = { Text("笔记") },
+                            )
+                            NavigationBarItem(
+                                selected = currentRoute == Routes.SETTINGS,
+                                onClick = {
+                                    navController.navigate(Routes.SETTINGS) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                label = { Text("设置") },
+                            )
+                        }
+                    }
                 }
             }
         },
     ) { padding ->
-        val isEditor = currentRoute?.startsWith("editor") == true
-        val navPadding = if (isEditor) {
+        val navPadding = if (isEditor && !showMiniBar) {
             PaddingValues()
         } else {
             padding

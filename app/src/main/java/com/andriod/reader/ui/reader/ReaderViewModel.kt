@@ -13,6 +13,7 @@ import com.andriod.reader.service.TtsHelper
 import com.andriod.reader.service.TtsPlaybackManager
 import com.andriod.reader.service.TtsPlaybackSession
 import com.andriod.reader.ui.NavArgs
+import com.andriod.reader.util.NotificationPermission
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +41,7 @@ data class ReaderUiState(
     val loopEnabled: Boolean = false,
     val ttsSettingsVisible: Boolean = false,
     val backgroundNoteTitle: String? = null,
+    val notificationPermissionDenied: Boolean = false,
 )
 
 @HiltViewModel
@@ -66,6 +68,12 @@ class ReaderViewModel @Inject constructor(
 
     private var controller: com.andriod.reader.service.TtsController? = null
     private var lastHostContext: Context? = null
+    private var pendingStartAfterPermission = false
+
+    companion object {
+        private const val NOTIFICATION_PERMISSION_MESSAGE =
+            "需要通知权限才能在后台显示朗读控制"
+    }
 
     init {
         viewModelScope.launch {
@@ -221,6 +229,64 @@ class ReaderViewModel @Inject constructor(
         _uiState.update { it.copy(voicePreference = preference) }
     }
 
+    fun refreshNotificationPermissionState() {
+        if (!NotificationPermission.hasPermission(context)) return
+        _uiState.update {
+            it.copy(
+                notificationPermissionDenied = false,
+                ttsError = if (it.ttsError == NOTIFICATION_PERMISSION_MESSAGE) null else it.ttsError,
+            )
+        }
+    }
+
+    fun openNotificationSettings() {
+        NotificationPermission.openAppNotificationSettings(context)
+    }
+
+    fun onNotificationPermissionResult(granted: Boolean) {
+        if (granted) {
+            _uiState.update {
+                it.copy(
+                    notificationPermissionDenied = false,
+                    ttsError = if (it.ttsError == NOTIFICATION_PERMISSION_MESSAGE) null else it.ttsError,
+                )
+            }
+            if (pendingStartAfterPermission) {
+                pendingStartAfterPermission = false
+                executePendingStartPlayback(withForegroundService = true)
+            }
+            return
+        }
+        _uiState.update {
+            it.copy(
+                notificationPermissionDenied = true,
+                ttsError = NOTIFICATION_PERMISSION_MESSAGE,
+            )
+        }
+        if (pendingStartAfterPermission) {
+            pendingStartAfterPermission = false
+            executePendingStartPlayback(withForegroundService = false)
+        }
+    }
+
+    private fun needsNotificationPermissionForNewPlayback(): Boolean {
+        return NotificationPermission.isRequired() &&
+            !NotificationPermission.hasPermission(context)
+    }
+
+    private fun executePendingStartPlayback(withForegroundService: Boolean) {
+        val host = lastHostContext ?: return
+        val note = _uiState.value.note ?: return
+        if (note.content.isBlank()) return
+        TtsPlaybackManager.startPlayback(
+            context = host,
+            fileName = note.fileName,
+            title = note.title,
+            content = note.content,
+            withForegroundService = withForegroundService,
+        )
+    }
+
     fun togglePlayPause() {
         val host = lastHostContext
         val state = _uiState.value
@@ -257,6 +323,21 @@ class ReaderViewModel @Inject constructor(
         } else {
             controller?.resume()
         }
+    }
+
+    fun onPlayPauseClicked(requestNotificationPermission: () -> Unit) {
+        val state = _uiState.value
+        val session = TtsPlaybackManager.session.value
+        val note = state.note
+        val startingNewPlayback = !state.isPlaying &&
+            (!session.hasActiveSession || session.fileName != note?.fileName)
+
+        if (startingNewPlayback && needsNotificationPermissionForNewPlayback()) {
+            pendingStartAfterPermission = true
+            requestNotificationPermission()
+            return
+        }
+        togglePlayPause()
     }
 
     fun stop() = TtsPlaybackManager.stopPlayback()

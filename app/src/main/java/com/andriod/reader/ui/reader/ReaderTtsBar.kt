@@ -27,6 +27,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,12 +42,27 @@ fun ReaderPlaybackBar(
     onNextSegment: () -> Unit,
     onToggleLoop: () -> Unit,
     onOpenTtsSettings: () -> Unit,
+    onOpenNotificationSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
         when {
             uiState.isTtsInitializing -> {
                 Text("正在初始化语音引擎…", modifier = Modifier.padding(bottom = 4.dp))
+            }
+            uiState.notificationPermissionDenied -> {
+                Text(
+                    "需要通知权限才能在后台显示朗读控制",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+                TextButton(
+                    onClick = onOpenNotificationSettings,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                ) {
+                    Text("去设置")
+                }
             }
             uiState.ttsError != null -> {
                 Text(

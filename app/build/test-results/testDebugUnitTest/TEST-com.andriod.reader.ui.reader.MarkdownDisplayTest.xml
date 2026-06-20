@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andriod.reader.ui.reader.MarkdownDisplayTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-06-20T12:14:59" hostname="WILL-WIN" time="0.018">
+<testsuite name="com.andriod.reader.ui.reader.MarkdownDisplayTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-06-20T12:57:41" hostname="WILL-WIN" time="0.016">
   <properties/>
-  <testcase name="buildMarkdown_rendersHeadingWithoutHash" classname="com.andriod.reader.ui.reader.MarkdownDisplayTest" time="0.018"/>
-  <testcase name="buildMarkdown_showsBoldWithoutMarkers" classname="com.andriod.reader.ui.reader.MarkdownDisplayTest" time="0.0"/>
+  <testcase name="buildMarkdown_rendersHeadingWithoutHash" classname="com.andriod.reader.ui.reader.MarkdownDisplayTest" time="0.015"/>
+  <testcase name="buildMarkdown_showsBoldWithoutMarkers" classname="com.andriod.reader.ui.reader.MarkdownDisplayTest" time="0.001"/>
   <testcase name="buildMarkdown_rendersCheckboxGlyph" classname="com.andriod.reader.ui.reader.MarkdownDisplayTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>

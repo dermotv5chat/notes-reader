@@ -1,9 +1,9 @@
 -- Merging decision tree log ---
 manifest
-ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:2:1-37:12
-INJECTED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:2:1-37:12
-INJECTED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:2:1-37:12
-INJECTED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:2:1-37:12
+ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:2:1-38:12
+INJECTED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:2:1-38:12
+INJECTED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:2:1-38:12
+INJECTED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:2:1-38:12
 MERGED from [androidx.media:media:1.7.0] C:\Users\will\AppData\Local\Temp\cursor-sandbox-cache\9eeb1e2c96d1696bc2515ebd1ead8738\gradle\caches\8.9\transforms\274a5fe28813b279e7b4327329864292\transformed\media-1.7.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.hilt:hilt-navigation-compose:1.2.0] C:\Users\will\AppData\Local\Temp\cursor-sandbox-cache\9eeb1e2c96d1696bc2515ebd1ead8738\gradle\caches\8.9\transforms\45f78cdd6a91764af4dc9ef2caf5329a\transformed\hilt-navigation-compose-1.2.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.hilt:hilt-navigation:1.2.0] C:\Users\will\AppData\Local\Temp\cursor-sandbox-cache\9eeb1e2c96d1696bc2515ebd1ead8738\gradle\caches\8.9\transforms\aa97560620705fa2cf9769c42a46a218\transformed\hilt-navigation-1.2.0\AndroidManifest.xml:2:1-7:12
@@ -90,17 +90,21 @@ uses-permission#android.permission.WAKE_LOCK
 ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:7:5-68
 	android:name
 		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:7:22-65
-queries
-ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:9:5-13:15
-intent#action:name:android.intent.action.TTS_SERVICE
-ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:10:9-12:18
-action#android.intent.action.TTS_SERVICE
-ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:11:13-72
+uses-permission#android.permission.POST_NOTIFICATIONS
+ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:8:5-77
 	android:name
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:11:21-69
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:8:22-74
+queries
+ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:10:5-14:15
+intent#action:name:android.intent.action.TTS_SERVICE
+ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:11:9-13:18
+action#android.intent.action.TTS_SERVICE
+ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:12:13-72
+	android:name
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:12:21-69
 application
-ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:15:5-35:19
-INJECTED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:15:5-35:19
+ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:16:5-36:19
+INJECTED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:16:5-36:19
 MERGED from [androidx.emoji2:emoji2:1.3.0] C:\Users\will\AppData\Local\Temp\cursor-sandbox-cache\9eeb1e2c96d1696bc2515ebd1ead8738\gradle\caches\8.9\transforms\f5dac1f757e78740e069113ad8a628c9\transformed\emoji2-1.3.0\AndroidManifest.xml:23:5-33:19
 MERGED from [androidx.emoji2:emoji2:1.3.0] C:\Users\will\AppData\Local\Temp\cursor-sandbox-cache\9eeb1e2c96d1696bc2515ebd1ead8738\gradle\caches\8.9\transforms\f5dac1f757e78740e069113ad8a628c9\transformed\emoji2-1.3.0\AndroidManifest.xml:23:5-33:19
 MERGED from [androidx.lifecycle:lifecycle-process:2.8.7] C:\Users\will\AppData\Local\Temp\cursor-sandbox-cache\9eeb1e2c96d1696bc2515ebd1ead8738\gradle\caches\8.9\transforms\e8c8ce75602bd1d4ecc01c58fd276b92\transformed\lifecycle-process-2.8.7\AndroidManifest.xml:23:5-33:19
@@ -118,43 +122,43 @@ MERGED from [androidx.versionedparcelable:versionedparcelable:1.1.1] C:\Users\wi
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.15.0] C:\Users\will\AppData\Local\Temp\cursor-sandbox-cache\9eeb1e2c96d1696bc2515ebd1ead8738\gradle\caches\8.9\transforms\89163a280341861232bbdfdf5630b344\transformed\core-1.15.0\AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:20:9-35
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:21:9-35
 	android:label
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:19:9-41
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:20:9-41
 	android:icon
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:18:9-43
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:19:9-43
 	android:allowBackup
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:17:9-35
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:18:9-35
 	android:theme
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:21:9-51
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:22:9-51
 	android:name
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:16:9-42
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:17:9-42
 activity#com.andriod.reader.MainActivity
-ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:22:9-30:20
+ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:23:9-31:20
 	android:windowSoftInputMode
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:25:13-56
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:26:13-56
 	android:exported
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:24:13-36
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:25:13-36
 	android:name
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:23:13-41
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:24:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:26:13-29:29
+ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:27:13-30:29
 action#android.intent.action.MAIN
-ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:27:17-69
+ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:28:17-69
 	android:name
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:27:25-66
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:28:25-66
 category#android.intent.category.LAUNCHER
-ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:28:17-77
+ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:29:17-77
 	android:name
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:28:27-74
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:29:27-74
 service#com.andriod.reader.service.TtsPlaybackService
-ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:31:9-34:61
+ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:32:9-35:61
 	android:exported
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:33:13-37
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:34:13-37
 	android:foregroundServiceType
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:34:13-58
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:35:13-58
 	android:name
-		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:32:13-55
+		ADDED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml:33:13-55
 uses-sdk
 INJECTED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from E:\workspace\andriod-reader\app\src\main\AndroidManifest.xml

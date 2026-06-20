@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-06-20T12:14:59" hostname="WILL-WIN" time="0.005">
+<testsuite name="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-06-20T12:57:41" hostname="WILL-WIN" time="0.005">
   <properties/>
-  <testcase name="wrap_withSelection_addsBoldMarkers" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.003"/>
-  <testcase name="strikethrough_wrapsSelection" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.001"/>
+  <testcase name="wrap_withSelection_addsBoldMarkers" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.004"/>
+  <testcase name="strikethrough_wrapsSelection" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>
   <testcase name="bulletList_appliesToAllLinesInSelection" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>
   <testcase name="bulletList_toggleRemovesPrefix" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>
   <testcase name="wrap_withoutSelection_insertsMarkersWithCursorInside" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>
