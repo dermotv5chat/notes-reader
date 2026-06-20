@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -48,7 +49,12 @@ fun ReaderScreen(
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val activity = LocalContext.current as? Activity
+    val context = LocalContext.current
+    val activity = context as? Activity
+
+    LaunchedEffect(context) {
+        viewModel.initTts(context)
+    }
 
     DisposableEffect(Unit) {
         onDispose { viewModel.releaseTts() }
@@ -145,6 +151,18 @@ fun ReaderScreen(
                 if (uiState.segmentTotal > 0) {
                     Text("段落 ${uiState.segmentIndex + 1} / ${uiState.segmentTotal}")
                 }
+                when {
+                    uiState.isTtsInitializing -> {
+                        Text("正在初始化语音引擎…", modifier = Modifier.padding(bottom = 8.dp))
+                    }
+                    uiState.ttsError != null -> {
+                        Text(
+                            uiState.ttsError!!,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                        )
+                    }
+                }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -153,7 +171,7 @@ fun ReaderScreen(
                     IconButton(
                         onClick = viewModel::togglePlayPause,
                         modifier = Modifier.padding(8.dp),
-                        enabled = uiState.isTtsReady,
+                        enabled = !uiState.isTtsInitializing,
                     ) {
                         Icon(
                             if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -161,7 +179,7 @@ fun ReaderScreen(
                             modifier = Modifier.padding(4.dp),
                         )
                     }
-                    IconButton(onClick = viewModel::stop, enabled = uiState.isTtsReady) {
+                    IconButton(onClick = viewModel::stop, enabled = !uiState.isTtsInitializing) {
                         Icon(Icons.Default.Stop, contentDescription = "停止")
                     }
                     IconButton(onClick = viewModel::nextSegment, enabled = uiState.isTtsReady) {

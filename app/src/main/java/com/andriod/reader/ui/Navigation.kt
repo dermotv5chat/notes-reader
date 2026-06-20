@@ -28,7 +28,7 @@ object Routes {
     const val NOTES = "notes"
     const val SETTINGS = "settings"
     const val EDITOR = "editor?fileName={fileName}"
-    const val READER = "reader/{fileName}"
+    const val READER = "reader?fileName={fileName}"
 
     fun editor(fileName: String? = null): String =
         if (fileName == null) {
@@ -37,7 +37,7 @@ object Routes {
             "editor?fileName=${Uri.encode(fileName)}"
         }
 
-    fun reader(fileName: String): String = "reader/${Uri.encode(fileName)}"
+    fun reader(fileName: String): String = "reader?fileName=${Uri.encode(fileName)}"
 }
 
 @Composable
@@ -115,9 +115,7 @@ fun ReaderApp() {
                     onDone = { navController.popBackStack() },
                 )
             }
-            composable("reader/{fileName}") { entry ->
-                val encoded = entry.arguments?.getString("fileName") ?: return@composable
-                val fileName = Uri.decode(encoded)
+            composable("reader?fileName={fileName}") {
                 ReaderScreen(
                     onBack = { navController.popBackStack() },
                 )

@@ -9,7 +9,9 @@ import com.andriod.reader.data.repository.NoteRepository
 import com.andriod.reader.domain.Note
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
+import com.andriod.reader.service.TtsHelper
 import com.andriod.reader.service.TtsPlaybackManager
+import com.andriod.reader.ui.NavArgs
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +34,8 @@ data class ReaderUiState(
     val voicePreference: TtsVoicePreference = TtsVoicePreference.AUTO,
     val voicePickerExpanded: Boolean = false,
     val isTtsReady: Boolean = false,
+    val isTtsInitializing: Boolean = false,
+    val ttsError: String? = null,
 )
 
 @HiltViewModel
@@ -41,7 +45,7 @@ class ReaderViewModel @Inject constructor(
     private val noteRepository: NoteRepository,
     private val settingsStore: SettingsStore,
 ) : ViewModel() {
-    private val fileName: String = savedStateHandle.get<String>("fileName") ?: ""
+    private val fileName: String = NavArgs.decodeFileName(savedStateHandle.get<String>("fileName"))
 
     private val _uiState = MutableStateFlow(
         ReaderUiState(
@@ -56,10 +60,7 @@ class ReaderViewModel @Inject constructor(
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
     private var controller: com.andriod.reader.service.TtsController? = null
-
-    init {
-        initTts()
-    }
+    private var lastHostContext: Context? = null
 
     private fun readVoicePreference(): TtsVoicePreference {
         return runCatching {
@@ -67,25 +68,62 @@ class ReaderViewModel @Inject constructor(
         }.getOrDefault(TtsVoicePreference.AUTO)
     }
 
-    fun initTts() {
+    fun initTts(hostContext: Context) {
+        lastHostContext = hostContext
         viewModelScope.launch {
+            _uiState.update { it.copy(isTtsInitializing = true, ttsError = null, isTtsReady = false) }
+            TtsPlaybackManager.release()
             val tts = TtsPlaybackManager.getOrCreate(
-                context = context,
+                context = hostContext,
                 onSegmentChanged = { index, total ->
                     _uiState.update { it.copy(segmentIndex = index, segmentTotal = total) }
                 },
                 onPlaybackStateChanged = { playing ->
                     _uiState.update { it.copy(isPlaying = playing) }
                 },
+                onSpeakError = { message ->
+                    _uiState.update { it.copy(ttsError = message, isPlaying = false) }
+                },
             )
-            tts.awaitReady()
+            val ready = tts.awaitReady(hostContext)
+            if (!ready) {
+                val engines = TtsHelper.listInstalledEngines(hostContext)
+                val defaultEngine = TtsHelper.defaultEnginePackage(hostContext)
+                val tried = tts.attemptedEngineLabels()
+                _uiState.update {
+                    it.copy(
+                        isTtsInitializing = false,
+                        isTtsReady = false,
+                        ttsError = buildString {
+                            append("无法启动语音引擎。")
+                            if (tried.isNotEmpty()) {
+                                append("已尝试：${tried.joinToString()}。")
+                            }
+                            if (!defaultEngine.isNullOrBlank()) {
+                                append("系统默认：$defaultEngine。")
+                            }
+                            if (engines.isNotEmpty()) {
+                                append("已安装：${engines.joinToString()}。")
+                            }
+                            append("请到 设置 → 更多设置 → 无障碍 → 文字转语音输出，确认默认引擎能试听中文。")
+                        },
+                    )
+                }
+                return@launch
+            }
             tts.setSpeechRate(_uiState.value.speechRate)
             tts.setPitch(_uiState.value.speechPitch)
             tts.applyVoicePreference(_uiState.value.voicePreference)
             _uiState.value.selectedVoiceId?.let { tts.applySelectedVoice(it) }
             controller = tts
             refreshVoiceOptions(tts)
-            _uiState.update { it.copy(isTtsReady = true) }
+            _uiState.update {
+                it.copy(
+                    isTtsInitializing = false,
+                    isTtsReady = true,
+                    ttsError = null,
+                )
+            }
         }
     }
 
@@ -124,12 +162,27 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun togglePlayPause() {
-        val tts = controller ?: return
+        val tts = controller
         val state = _uiState.value
+        if (tts == null || !state.isTtsReady) {
+            _uiState.update { it.copy(ttsError = it.ttsError ?: "语音引擎尚未就绪") }
+            lastHostContext?.let { initTts(it) }
+            return
+        }
+        if (state.note == null) {
+            _uiState.update { it.copy(ttsError = "笔记不存在，无法朗读") }
+            return
+        }
+        val content = state.note.content
+        if (content.isBlank()) {
+            _uiState.update { it.copy(ttsError = "笔记内容为空") }
+            return
+        }
+        _uiState.update { it.copy(ttsError = null) }
         if (state.isPlaying) {
             tts.pause()
         } else if (state.segmentTotal == 0) {
-            state.note?.content?.let { tts.start(it) }
+            tts.start(content)
         } else {
             tts.resume()
         }

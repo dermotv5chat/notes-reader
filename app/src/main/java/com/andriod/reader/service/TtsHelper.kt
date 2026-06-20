@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.speech.tts.Voice
 import com.andriod.reader.domain.TtsVoiceOption
@@ -35,19 +36,58 @@ object TtsHelper {
         val languageFallback: Boolean,
     )
 
-    fun isGoogleTtsInstalled(context: Context): Boolean {
+    fun isGoogleTtsInstalled(context: Context): Boolean =
+        listInstalledEngines(context).contains(GOOGLE_TTS_ENGINE)
+
+    fun listInstalledEngines(context: Context): List<String> {
         val pm = context.packageManager
-        val intent = Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE).apply {
-            setPackage(GOOGLE_TTS_ENGINE)
-        }
-        return pm.queryIntentServices(intent, PackageManager.MATCH_DEFAULT_ONLY).isNotEmpty()
+        val intent = Intent(TextToSpeech.Engine.INTENT_ACTION_TTS_SERVICE)
+        return pm.queryIntentServices(intent, PackageManager.MATCH_ALL)
+            .mapNotNull { resolveInfo -> resolveInfo.serviceInfo?.packageName }
+            .distinct()
+            .sorted()
     }
 
-    fun createTextToSpeech(context: Context, listener: TextToSpeech.OnInitListener): TextToSpeech {
-        return if (isGoogleTtsInstalled(context)) {
-            TextToSpeech(context.applicationContext, listener, GOOGLE_TTS_ENGINE)
+    fun defaultEnginePackage(context: Context): String? =
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.TTS_DEFAULT_SYNTH)
+            ?.takeIf { it.isNotBlank() }
+
+    /**
+     * null = let Android pick the system default engine (most reliable on MIUI / vendor ROMs).
+     */
+    fun engineTryOrder(context: Context): List<String?> {
+        val installed = listInstalledEngines(context)
+        val defaultEngine = defaultEnginePackage(context)
+        val order = linkedSetOf<String?>()
+
+        order.add(null)
+        if (!defaultEngine.isNullOrBlank()) {
+            order.add(defaultEngine)
+        }
+        installed
+            .filter { it != defaultEngine && it != GOOGLE_TTS_ENGINE }
+            .forEach { order.add(it) }
+        if (GOOGLE_TTS_ENGINE in installed) {
+            order.add(GOOGLE_TTS_ENGINE)
+        }
+        return order.toList()
+    }
+
+    fun engineLabel(enginePackage: String?): String =
+        when {
+            enginePackage.isNullOrBlank() -> "系统默认"
+            else -> enginePackage
+        }
+
+    fun createTextToSpeech(
+        context: Context,
+        listener: TextToSpeech.OnInitListener,
+        enginePackage: String?,
+    ): TextToSpeech {
+        return if (enginePackage != null) {
+            TextToSpeech(context, listener, enginePackage)
         } else {
-            TextToSpeech(context.applicationContext, listener)
+            TextToSpeech(context, listener)
         }
     }
 
@@ -56,18 +96,17 @@ object TtsHelper {
         preferredVoiceName: String? = null,
         preference: TtsVoicePreference = TtsVoicePreference.AUTO,
     ): VoiceSetup {
-        engine.setLanguage(Locale.SIMPLIFIED_CHINESE)
-        engine.setLanguage(Locale.CHINESE)
-
         val chineseVoices = listChineseVoices(engine)
-        val selected = resolveVoice(chineseVoices, preferredVoiceName, preference)
+        val validPreferred = preferredVoiceName?.takeIf { name ->
+            chineseVoices.any { it.name == name }
+        }
+        val selected = resolveVoice(chineseVoices, validPreferred, preference)
         if (selected != null && engine.setVoice(selected) == TextToSpeech.SUCCESS) {
             return VoiceSetup(voice = selected, chineseVoiceCount = chineseVoices.size, languageFallback = false)
         }
 
         val langResult = engine.setLanguage(Locale.SIMPLIFIED_CHINESE)
-        val languageOk = langResult != TextToSpeech.LANG_MISSING_DATA &&
-            langResult != TextToSpeech.LANG_NOT_SUPPORTED
+        val languageOk = langResult >= TextToSpeech.LANG_AVAILABLE
 
         return VoiceSetup(
             voice = engine.voice?.takeIf { isChineseVoice(it) },
@@ -122,7 +161,7 @@ object TtsHelper {
     fun getDiagnostics(
         context: Context,
         engine: TextToSpeech?,
-        forcedGoogle: Boolean = false,
+        activeEnginePackage: String? = null,
         preferredVoiceName: String? = null,
         preference: TtsVoicePreference = TtsVoicePreference.AUTO,
     ): TtsDiagnostics {
@@ -145,8 +184,8 @@ object TtsHelper {
 
         val setup = setupChineseVoice(engine, preferredVoiceName, preference)
         val currentVoice = setup.voice ?: engine.voice?.takeIf { isChineseVoice(it) }
-        val enginePackage = engine.defaultEngine ?: if (forcedGoogle) GOOGLE_TTS_ENGINE else "未知"
-        val isGoogle = enginePackage == GOOGLE_TTS_ENGINE || forcedGoogle
+        val enginePackage = engine.defaultEngine ?: activeEnginePackage ?: "未知"
+        val isGoogle = enginePackage == GOOGLE_TTS_ENGINE
 
         return TtsDiagnostics(
             enginePackage = enginePackage,
@@ -254,26 +293,21 @@ object TtsHelper {
         preference: TtsVoicePreference,
     ): String {
         return when {
-            !googleInstalled ->
-                "未检测到 Google 文字转语音，建议安装后重试。"
-            !isGoogleEngine ->
-                "当前未使用 Google 引擎。请在系统「文字转语音输出」里将默认引擎改为 Google。"
             setup.chineseVoiceCount > 0 && setup.voice != null ->
                 buildString {
-                    append("已识别 ${setup.chineseVoiceCount} 个中文语音，可在下方选择。")
+                    append("已识别 ${setup.chineseVoiceCount} 个中文语音，可在阅读页选择。")
                     if (setup.voice.isNetworkConnectionRequired) {
-                        append("当前为在线语音，需联网；开车建议试离线语音。")
-                    }
-                    if (preference == TtsVoicePreference.AUTO) {
-                        append("默认优先离线语音。")
+                        append("当前为在线语音，需联网。")
                     }
                 }
             setup.chineseVoiceCount > 0 ->
-                "已识别 ${setup.chineseVoiceCount} 个中文语音，请在下方手动选择。"
+                "已识别 ${setup.chineseVoiceCount} 个中文语音，请在阅读页手动选择。"
             setup.languageFallback ->
-                "未识别到独立语音包，但中文语言可用。请下载中文语音数据后重新检测。"
+                "将使用系统默认中文语音朗读。"
+            googleInstalled && isGoogleEngine ->
+                "使用 Google 引擎。若效果不好，可在系统设置换成本机自带引擎。"
             else ->
-                "暂未识别到中文语音。请打开 Google TTS 下载中文（中国）语音包。"
+                "使用系统自带语音引擎。若无法朗读，请到系统「文字转语音输出」试听并确认中文可用。"
         }
     }
 }

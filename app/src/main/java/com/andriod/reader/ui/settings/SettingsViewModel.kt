@@ -49,9 +49,13 @@ class SettingsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(loadState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
-    init {
-        refreshTtsInfo()
+    private var lastHostContext: Context? = null
+
+    fun setHostContext(hostContext: Context) {
+        lastHostContext = hostContext
     }
+
+    private fun ttsContext(): Context = lastHostContext ?: context
 
     private fun loadState(): SettingsUiState {
         val gh = settingsStore.getGitHubSettings()
@@ -84,7 +88,7 @@ class SettingsViewModel @Inject constructor(
     fun onVoiceSelected(voiceId: String) {
         viewModelScope.launch {
             settingsStore.saveSelectedVoiceId(voiceId)
-            val controller = TtsPlaybackManager.getOrNull() ?: TtsPlaybackManager.awaitReady(context)
+            val controller = TtsPlaybackManager.getOrNull() ?: TtsPlaybackManager.awaitReady(ttsContext())
             controller.applySelectedVoice(voiceId)
             _uiState.update {
                 it.copy(
@@ -100,7 +104,7 @@ class SettingsViewModel @Inject constructor(
     fun onVoicePreferenceChange(preference: TtsVoicePreference) {
         viewModelScope.launch {
             settingsStore.saveVoicePreference(preference.name)
-            val controller = TtsPlaybackManager.getOrNull() ?: TtsPlaybackManager.awaitReady(context)
+            val controller = TtsPlaybackManager.getOrNull() ?: TtsPlaybackManager.awaitReady(ttsContext())
             controller.applyVoicePreference(preference)
             _uiState.update { it.copy(voicePreference = preference, saved = false) }
             updateDiagnostics(controller)
@@ -141,8 +145,8 @@ class SettingsViewModel @Inject constructor(
     fun refreshTtsInfo() {
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshingTts = true) }
-            TtsPlaybackManager.reinitialize(context)
-            val controller = TtsPlaybackManager.awaitReady(context)
+            TtsPlaybackManager.reinitialize(ttsContext())
+            val controller = TtsPlaybackManager.awaitReady(ttsContext())
             controller.setSpeechRate(_uiState.value.speechRate)
             controller.setPitch(_uiState.value.speechPitch)
             controller.applyVoicePreference(_uiState.value.voicePreference)
@@ -182,7 +186,7 @@ class SettingsViewModel @Inject constructor(
     fun previewTts() {
         viewModelScope.launch {
             save()
-            val controller = TtsPlaybackManager.getOrNull() ?: TtsPlaybackManager.awaitReady(context)
+            val controller = TtsPlaybackManager.getOrNull() ?: TtsPlaybackManager.awaitReady(ttsContext())
             controller.previewSample()
         }
     }

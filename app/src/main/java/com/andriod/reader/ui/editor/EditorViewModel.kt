@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andriod.reader.data.repository.NoteRepository
+import com.andriod.reader.ui.NavArgs
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -36,6 +37,8 @@ class EditorViewModel @Inject constructor(
     private val noteRepository: NoteRepository,
 ) : ViewModel() {
     private val initialFileName: String? = savedStateHandle.get<String>("fileName")
+        ?.let { NavArgs.decodeFileName(it) }
+        ?.takeIf { it.isNotEmpty() }
 
     private val _uiState = MutableStateFlow(EditorUiState())
     val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
