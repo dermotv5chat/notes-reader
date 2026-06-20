@@ -1,5 +1,6 @@
 package com.andriod.reader.ui.settings;
 
+import android.content.Context;
 import com.andriod.reader.data.remote.SettingsStore;
 import com.andriod.reader.data.repository.SyncRepository;
 import dagger.internal.DaggerGenerated;
@@ -10,7 +11,7 @@ import javax.annotation.processing.Generated;
 import javax.inject.Provider;
 
 @ScopeMetadata
-@QualifierMetadata
+@QualifierMetadata("dagger.hilt.android.qualifiers.ApplicationContext")
 @DaggerGenerated
 @Generated(
     value = "dagger.internal.codegen.ComponentProcessor",
@@ -25,28 +26,33 @@ import javax.inject.Provider;
     "deprecation"
 })
 public final class SettingsViewModel_Factory implements Factory<SettingsViewModel> {
+  private final Provider<Context> contextProvider;
+
   private final Provider<SettingsStore> settingsStoreProvider;
 
   private final Provider<SyncRepository> syncRepositoryProvider;
 
-  public SettingsViewModel_Factory(Provider<SettingsStore> settingsStoreProvider,
+  public SettingsViewModel_Factory(Provider<Context> contextProvider,
+      Provider<SettingsStore> settingsStoreProvider,
       Provider<SyncRepository> syncRepositoryProvider) {
+    this.contextProvider = contextProvider;
     this.settingsStoreProvider = settingsStoreProvider;
     this.syncRepositoryProvider = syncRepositoryProvider;
   }
 
   @Override
   public SettingsViewModel get() {
-    return newInstance(settingsStoreProvider.get(), syncRepositoryProvider.get());
+    return newInstance(contextProvider.get(), settingsStoreProvider.get(), syncRepositoryProvider.get());
   }
 
-  public static SettingsViewModel_Factory create(Provider<SettingsStore> settingsStoreProvider,
+  public static SettingsViewModel_Factory create(Provider<Context> contextProvider,
+      Provider<SettingsStore> settingsStoreProvider,
       Provider<SyncRepository> syncRepositoryProvider) {
-    return new SettingsViewModel_Factory(settingsStoreProvider, syncRepositoryProvider);
+    return new SettingsViewModel_Factory(contextProvider, settingsStoreProvider, syncRepositoryProvider);
   }
 
-  public static SettingsViewModel newInstance(SettingsStore settingsStore,
+  public static SettingsViewModel newInstance(Context context, SettingsStore settingsStore,
       SyncRepository syncRepository) {
-    return new SettingsViewModel(settingsStore, syncRepository);
+    return new SettingsViewModel(context, settingsStore, syncRepository);
   }
 }

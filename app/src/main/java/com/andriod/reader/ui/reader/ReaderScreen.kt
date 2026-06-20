@@ -58,6 +58,7 @@ fun ReaderScreen(
     var segmentIndex by remember { mutableIntStateOf(0) }
     var segmentTotal by remember { mutableIntStateOf(0) }
     var speechRate by remember { mutableFloatStateOf(settingsStore.getDefaultSpeechRate()) }
+    var speechPitch by remember { mutableFloatStateOf(settingsStore.getDefaultSpeechPitch()) }
     val activity = LocalContext.current as? Activity
 
     DisposableEffect(settingsStore.isKeepScreenOn()) {
@@ -78,7 +79,10 @@ fun ReaderScreen(
                 segmentTotal = total
             },
             onPlaybackStateChanged = { playing -> isPlaying = playing },
-        )
+        ).also {
+            it.setSpeechRate(speechRate)
+            it.setPitch(speechPitch)
+        }
     }
 
     Scaffold(

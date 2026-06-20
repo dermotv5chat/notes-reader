@@ -50,6 +50,24 @@ class SettingsStore @Inject constructor(
         prefs.edit().putFloat(KEY_SPEECH_RATE, rate).apply()
     }
 
+    fun getDefaultSpeechPitch(): Float = prefs.getFloat(KEY_SPEECH_PITCH, 1.0f)
+
+    fun saveDefaultSpeechPitch(pitch: Float) {
+        prefs.edit().putFloat(KEY_SPEECH_PITCH, pitch).apply()
+    }
+
+    fun getSelectedVoiceId(): String? = prefs.getString(KEY_SELECTED_VOICE, null)?.takeIf { it.isNotBlank() }
+
+    fun saveSelectedVoiceId(voiceId: String?) {
+        prefs.edit().putString(KEY_SELECTED_VOICE, voiceId?.trim()).apply()
+    }
+
+    fun getVoicePreference(): String = prefs.getString(KEY_VOICE_PREFERENCE, "AUTO") ?: "AUTO"
+
+    fun saveVoicePreference(preference: String) {
+        prefs.edit().putString(KEY_VOICE_PREFERENCE, preference).apply()
+    }
+
     fun isKeepScreenOn(): Boolean = prefs.getBoolean(KEY_KEEP_SCREEN_ON, false)
 
     fun setKeepScreenOn(enabled: Boolean) {
@@ -62,6 +80,9 @@ class SettingsStore @Inject constructor(
         private const val KEY_REPO = "github_repo"
         private const val KEY_NOTES_PATH = "github_notes_path"
         private const val KEY_SPEECH_RATE = "speech_rate"
+        private const val KEY_SPEECH_PITCH = "speech_pitch"
+        private const val KEY_SELECTED_VOICE = "selected_voice_id"
+        private const val KEY_VOICE_PREFERENCE = "voice_preference"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
     }
 }

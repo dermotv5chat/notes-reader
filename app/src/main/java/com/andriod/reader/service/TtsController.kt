@@ -13,38 +13,60 @@ import androidx.core.app.NotificationCompat
 import androidx.media.session.MediaButtonReceiver
 import com.andriod.reader.MainActivity
 import com.andriod.reader.R
-import java.util.Locale
+import com.andriod.reader.data.remote.SettingsStore
+import com.andriod.reader.domain.TtsVoiceOption
+import com.andriod.reader.domain.TtsVoicePreference
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CompletableDeferred
 import java.util.concurrent.atomic.AtomicBoolean
 
 class TtsController(
     private val context: android.content.Context,
+    private val settingsStore: SettingsStore,
     private val onSegmentChanged: (Int, Int) -> Unit,
     private val onPlaybackStateChanged: (Boolean) -> Unit,
 ) : TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ready = false
+    private var selectedVoice: Voice? = null
+    private val initDeferred = CompletableDeferred<Boolean>()
     private val segments = mutableListOf<String>()
     private var currentIndex = 0
     private var speechRate = 1.0f
+    private var pitch = 1.0f
     private val isPlaying = AtomicBoolean(false)
     private val isPaused = AtomicBoolean(false)
+    private val usesGoogleEngine = TtsHelper.isGoogleTtsInstalled(context)
 
     fun init() {
         if (tts == null) {
-            tts = TextToSpeech(context.applicationContext, this)
+            if (!initDeferred.isCompleted) {
+                // noop - will complete in onInit
+            }
+            tts = TtsHelper.createTextToSpeech(context, this)
         }
     }
 
     override fun onInit(status: Int) {
-        if (status != TextToSpeech.SUCCESS) return
-        val engine = tts ?: return
-        val voice = selectChineseVoice(engine)
-        if (voice != null) {
-            engine.voice = voice
-        } else {
-            engine.language = Locale.SIMPLIFIED_CHINESE
+        if (status != TextToSpeech.SUCCESS) {
+            if (!initDeferred.isCompleted) initDeferred.complete(false)
+            return
         }
+        val engine = tts ?: run {
+            if (!initDeferred.isCompleted) initDeferred.complete(false)
+            return
+        }
+        val setup = TtsHelper.setupChineseVoice(
+            engine = engine,
+            preferredVoiceName = settingsStore.getSelectedVoiceId(),
+            preference = readVoicePreference(),
+        )
+        selectedVoice = setup.voice
         engine.setSpeechRate(speechRate)
+        engine.setPitch(pitch)
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) = Unit
 
@@ -63,11 +85,87 @@ class TtsController(
             override fun onError(utteranceId: String?) = Unit
         })
         ready = true
+        if (!initDeferred.isCompleted) initDeferred.complete(true)
+    }
+
+    suspend fun awaitReady(): Boolean {
+        init()
+        return TtsHelper.awaitEngineReady(initDeferred)
     }
 
     fun setSpeechRate(rate: Float) {
         speechRate = rate
         tts?.setSpeechRate(rate)
+    }
+
+    fun setPitch(value: Float) {
+        pitch = value
+        tts?.setPitch(value)
+    }
+
+    fun diagnostics(): TtsHelper.TtsDiagnostics =
+        TtsHelper.getDiagnostics(
+            context = context,
+            engine = tts,
+            forcedGoogle = usesGoogleEngine,
+            preferredVoiceName = settingsStore.getSelectedVoiceId(),
+            preference = readVoicePreference(),
+        )
+
+    fun listVoiceOptions(): List<TtsVoiceOption> {
+        val engine = tts ?: return emptyList()
+        return TtsHelper.toVoiceOptions(
+            voices = TtsHelper.listChineseVoices(engine),
+            preference = readVoicePreference(),
+        )
+    }
+
+    fun applySelectedVoice(voiceId: String?) {
+        settingsStore.saveSelectedVoiceId(voiceId)
+        tts?.let { engine ->
+            val setup = TtsHelper.setupChineseVoice(
+                engine = engine,
+                preferredVoiceName = voiceId,
+                preference = readVoicePreference(),
+            )
+            selectedVoice = setup.voice
+        }
+    }
+
+    fun applyVoicePreference(preference: TtsVoicePreference) {
+        settingsStore.saveVoicePreference(preference.name)
+        if (settingsStore.getSelectedVoiceId() == null) {
+            tts?.let { engine ->
+                val setup = TtsHelper.setupChineseVoice(
+                    engine = engine,
+                    preferredVoiceName = null,
+                    preference = preference,
+                )
+                selectedVoice = setup.voice
+            }
+        }
+    }
+
+    private fun readVoicePreference(): TtsVoicePreference {
+        return runCatching {
+            TtsVoicePreference.valueOf(settingsStore.getVoicePreference())
+        }.getOrDefault(TtsVoicePreference.AUTO)
+    }
+
+    fun previewSample() {
+        init()
+        if (!ready) return
+        tts?.speak(
+            "你好，这是笔记朗读的语音试听。",
+            TextToSpeech.QUEUE_FLUSH,
+            null,
+            "preview",
+        )
+    }
+
+    fun reinitialize() {
+        shutdown()
+        init()
     }
 
     fun start(text: String) {
@@ -118,6 +216,10 @@ class TtsController(
         tts?.shutdown()
         tts = null
         ready = false
+        selectedVoice = null
+        if (!initDeferred.isCompleted) {
+            initDeferred.complete(false)
+        }
     }
 
     fun isCurrentlyPlaying(): Boolean = isPlaying.get() && !isPaused.get()
@@ -129,38 +231,55 @@ class TtsController(
     }
 
     private fun splitSegments(text: String): List<String> {
-        return text.split(Regex("(?<=[。！？.!?\\n])"))
+        return text.split(Regex("(?<=[。！？；;.!?\\n])|(?<=[，,])"))
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .ifEmpty { listOf(text) }
-    }
-
-    private fun selectChineseVoice(engine: TextToSpeech): Voice? {
-        return engine.voices
-            ?.filter { it.locale.language == "zh" }
-            ?.sortedByDescending { it.quality }
-            ?.firstOrNull { it.quality >= Voice.QUALITY_HIGH }
-            ?: engine.voices?.firstOrNull { it.locale.language == "zh" }
     }
 }
 
 object TtsPlaybackManager {
     private var controller: TtsController? = null
 
+    private fun settingsStore(context: android.content.Context): SettingsStore {
+        return EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            TtsServiceEntryPoint::class.java,
+        ).settingsStore()
+    }
+
     fun getOrCreate(
         context: android.content.Context,
         onSegmentChanged: (Int, Int) -> Unit,
         onPlaybackStateChanged: (Boolean) -> Unit,
     ): TtsController {
-        return controller ?: TtsController(context, onSegmentChanged, onPlaybackStateChanged).also {
+        return controller ?: TtsController(
+            context = context,
+            settingsStore = settingsStore(context),
+            onSegmentChanged = onSegmentChanged,
+            onPlaybackStateChanged = onPlaybackStateChanged,
+        ).also {
             controller = it
             it.init()
         }
     }
 
+    fun getOrNull(): TtsController? = controller
+
+    suspend fun awaitReady(context: android.content.Context): TtsController {
+        val ctrl = getOrCreate(context, { _, _ -> }, {})
+        ctrl.awaitReady()
+        return ctrl
+    }
+
     fun release() {
         controller?.shutdown()
         controller = null
+    }
+
+    fun reinitialize(context: android.content.Context) {
+        release()
+        getOrCreate(context, { _, _ -> }, {})
     }
 }
 
@@ -215,4 +334,10 @@ object TtsNotificationHelper {
             .setOngoing(isPlaying)
             .build()
     }
+}
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+interface TtsServiceEntryPoint {
+    fun settingsStore(): SettingsStore
 }
