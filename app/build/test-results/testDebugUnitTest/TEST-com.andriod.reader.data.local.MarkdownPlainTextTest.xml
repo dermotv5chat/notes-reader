@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andriod.reader.data.local.MarkdownPlainTextTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-06-20T10:24:38" hostname="WILL-WIN" time="0.003">
+<testsuite name="com.andriod.reader.data.local.MarkdownPlainTextTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-06-20T11:04:11" hostname="WILL-WIN" time="0.003">
   <properties/>
   <testcase name="stripForSpeech_handlesMixedFormatting" classname="com.andriod.reader.data.local.MarkdownPlainTextTest" time="0.002"/>
   <testcase name="stripForSpeech_skipsStrikethroughContent" classname="com.andriod.reader.data.local.MarkdownPlainTextTest" time="0.0"/>

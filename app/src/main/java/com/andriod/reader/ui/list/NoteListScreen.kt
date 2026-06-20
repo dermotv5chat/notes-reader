@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
@@ -43,7 +44,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -195,6 +198,14 @@ fun NoteListScreen(
         )
     }
 
+    uiState.nameDialog?.let { dialog ->
+        NameInputDialog(
+            dialog = dialog,
+            onDismiss = viewModel::cancelNameDialog,
+            onConfirm = viewModel::confirmNameDialog,
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -222,7 +233,10 @@ fun NoteListScreen(
                     }
                 },
                 actions = {
-                    if (!uiState.showTrash) {
+                    if (!uiState.showTrash && !searchMode) {
+                        IconButton(onClick = viewModel::requestCreateFolder) {
+                            Icon(Icons.Default.CreateNewFolder, contentDescription = "新建文件夹")
+                        }
                         IconButton(onClick = viewModel::openTrash) {
                             Icon(Icons.Default.DeleteSweep, contentDescription = "回收站")
                         }
@@ -275,35 +289,42 @@ fun NoteListScreen(
                     onRestore = viewModel::restoreTrash,
                     onPermanentDelete = viewModel::requestPermanentDelete,
                 )
-            } else if (uiState.notes.isEmpty()) {
-                EmptyNotesHint(searchMode = searchMode)
             } else if (searchMode) {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    items(uiState.notes, key = { it.fileName }) { note ->
-                        SwipeNoteRow(
-                            isExpanded = uiState.expandedNoteKey == note.fileName,
-                            onExpandedChange = { expanded ->
-                                if (expanded) {
-                                    viewModel.onNoteRowExpanded(note.fileName)
-                                } else if (uiState.expandedNoteKey == note.fileName) {
-                                    viewModel.clearExpandedNote()
-                                }
-                            },
-                            onOpen = { onOpenNote(note.fileName) },
-                            onEdit = { onEditNote(note.fileName) },
-                            onDelete = { viewModel.requestDelete(note.fileName) },
-                        ) {
-                            NoteRowContent(
-                                title = note.title,
-                                subtitle = note.fileName,
-                                updatedAt = formatter.format(note.updatedAt.atZone(ZoneId.systemDefault())),
-                                syncStatus = note.syncStatus,
-                            )
+                if (uiState.notes.isEmpty()) {
+                    EmptyNotesHint(searchMode = true)
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        items(uiState.notes, key = { it.fileName }) { note ->
+                            SwipeNoteRow(
+                                isExpanded = uiState.expandedRowKey == note.fileName,
+                                onExpandedChange = { expanded ->
+                                    if (expanded) {
+                                        viewModel.onRowExpanded(note.fileName)
+                                    } else if (uiState.expandedRowKey == note.fileName) {
+                                        viewModel.clearExpandedRow()
+                                    }
+                                },
+                                onOpen = { onOpenNote(note.fileName) },
+                                onEdit = { onEditNote(note.fileName) },
+                                onRename = { viewModel.requestRenameNote(note.fileName) },
+                                onDelete = { viewModel.requestDelete(note.fileName) },
+                            ) {
+                                NoteRowContent(
+                                    title = note.title,
+                                    subtitle = note.fileName,
+                                    updatedAt = formatter.format(note.updatedAt.atZone(ZoneId.systemDefault())),
+                                    syncStatus = note.syncStatus,
+                                )
+                            }
                         }
                     }
                 }
             } else {
-                val entries = NoteTreeBrowser.listAt(uiState.notes, uiState.currentFolder)
+                val entries = NoteTreeBrowser.listAt(
+                    uiState.notes,
+                    uiState.currentFolder,
+                    uiState.virtualFolders,
+                )
                 if (entries.isEmpty()) {
                     EmptyNotesHint(searchMode = false)
                 } else {
@@ -312,27 +333,41 @@ fun NoteListScreen(
                             items = entries,
                             key = { entry ->
                                 when (entry) {
-                                    is NoteTreeBrowser.Entry.Folder -> "folder:${entry.path}"
+                                    is NoteTreeBrowser.Entry.Folder -> SwipeRowKeys.folder(entry.path)
                                     is NoteTreeBrowser.Entry.File -> entry.note.fileName
                                 }
                             },
                         ) { entry ->
                             when (entry) {
-                                is NoteTreeBrowser.Entry.Folder -> FolderRow(
-                                    name = entry.name,
-                                    onOpen = { viewModel.openFolder(entry.path) },
-                                )
+                                is NoteTreeBrowser.Entry.Folder -> {
+                                    val folderKey = SwipeRowKeys.folder(entry.path)
+                                    SwipeFolderRow(
+                                        isExpanded = uiState.expandedRowKey == folderKey,
+                                        onExpandedChange = { expanded ->
+                                            if (expanded) {
+                                                viewModel.onRowExpanded(folderKey)
+                                            } else if (uiState.expandedRowKey == folderKey) {
+                                                viewModel.clearExpandedRow()
+                                            }
+                                        },
+                                        onOpen = { viewModel.openFolder(entry.path) },
+                                        onRename = { viewModel.requestRenameFolder(entry.path) },
+                                    ) {
+                                        FolderRowContent(name = entry.name)
+                                    }
+                                }
                                 is NoteTreeBrowser.Entry.File -> SwipeNoteRow(
-                                    isExpanded = uiState.expandedNoteKey == entry.note.fileName,
+                                    isExpanded = uiState.expandedRowKey == entry.note.fileName,
                                     onExpandedChange = { expanded ->
                                         if (expanded) {
-                                            viewModel.onNoteRowExpanded(entry.note.fileName)
-                                        } else if (uiState.expandedNoteKey == entry.note.fileName) {
-                                            viewModel.clearExpandedNote()
+                                            viewModel.onRowExpanded(entry.note.fileName)
+                                        } else if (uiState.expandedRowKey == entry.note.fileName) {
+                                            viewModel.clearExpandedRow()
                                         }
                                     },
                                     onOpen = { onOpenNote(entry.note.fileName) },
                                     onEdit = { onEditNote(entry.note.fileName) },
+                                    onRename = { viewModel.requestRenameNote(entry.note.fileName) },
                                     onDelete = { viewModel.requestDelete(entry.note.fileName) },
                                 ) {
                                     NoteRowContent(
@@ -351,6 +386,83 @@ fun NoteListScreen(
             }
         }
     }
+}
+
+@Composable
+private fun NameInputDialog(
+    dialog: NameDialogState,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    val initial = when (dialog) {
+        is NameDialogState.RenameNote -> dialog.currentName
+        is NameDialogState.RenameFolder -> dialog.currentName
+        is NameDialogState.CreateFolder -> ""
+    }
+    var text by remember(dialog) { mutableStateOf(initial) }
+
+    val title = when (dialog) {
+        is NameDialogState.RenameNote -> "重命名笔记"
+        is NameDialogState.RenameFolder -> "重命名文件夹"
+        is NameDialogState.CreateFolder -> "新建文件夹"
+    }
+    val label = when (dialog) {
+        is NameDialogState.RenameNote -> "文件名（不含 .md）"
+        is NameDialogState.RenameFolder -> "文件夹名称"
+        is NameDialogState.CreateFolder -> "文件夹名称"
+    }
+    val hint = when (dialog) {
+        is NameDialogState.RenameFolder ->
+            if (dialog.childNoteCount > 0) {
+                "将同时更新其下 ${dialog.childNoteCount} 篇笔记的路径。"
+            } else {
+                "空文件夹仅更新名称。"
+            }
+        is NameDialogState.CreateFolder -> "将在当前目录下创建。"
+        else -> null
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                hint?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text(label) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(text) },
+                enabled = text.isNotBlank(),
+            ) {
+                Text(
+                    when (dialog) {
+                        is NameDialogState.CreateFolder -> "创建"
+                        else -> "确定"
+                    },
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        },
+    )
 }
 
 @Composable
@@ -432,30 +544,19 @@ private fun EmptyNotesHint(searchMode: Boolean) {
 }
 
 @Composable
-private fun FolderRow(
-    name: String,
-    onOpen: () -> Unit,
-) {
-    Row(
+private fun RowScope.FolderRowContent(name: String) {
+    Icon(
+        Icons.Default.Folder,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.secondary,
+    )
+    Text(
+        text = name,
+        style = MaterialTheme.typography.titleMedium,
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen)
-            .padding(vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            Icons.Default.Folder,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.secondary,
-        )
-        Text(
-            text = name,
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 12.dp),
-        )
-    }
+            .weight(1f)
+            .padding(horizontal = 12.dp),
+    )
 }
 
 @Composable

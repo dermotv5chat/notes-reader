@@ -36,6 +36,8 @@ data class ReaderUiState(
     val isTtsReady: Boolean = false,
     val isTtsInitializing: Boolean = false,
     val ttsError: String? = null,
+    val loopEnabled: Boolean = false,
+    val ttsSettingsVisible: Boolean = false,
 )
 
 @HiltViewModel
@@ -55,6 +57,7 @@ class ReaderViewModel @Inject constructor(
             keepScreenOn = settingsStore.isKeepScreenOn(),
             selectedVoiceId = settingsStore.getSelectedVoiceId(),
             voicePreference = readVoicePreference(),
+            loopEnabled = settingsStore.isLoopPlaybackEnabled(),
         ),
     )
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
@@ -113,6 +116,7 @@ class ReaderViewModel @Inject constructor(
             }
             tts.setSpeechRate(_uiState.value.speechRate)
             tts.setPitch(_uiState.value.speechPitch)
+            tts.setLoopEnabled(_uiState.value.loopEnabled)
             tts.applyVoicePreference(_uiState.value.voicePreference)
             _uiState.value.selectedVoiceId?.let { tts.applySelectedVoice(it) }
             controller = tts
@@ -140,6 +144,27 @@ class ReaderViewModel @Inject constructor(
         settingsStore.saveDefaultSpeechRate(rate)
         controller?.setSpeechRate(rate)
         _uiState.update { it.copy(speechRate = rate) }
+    }
+
+    fun onSpeechPitchChange(pitch: Float) {
+        settingsStore.saveDefaultSpeechPitch(pitch)
+        controller?.setPitch(pitch)
+        _uiState.update { it.copy(speechPitch = pitch) }
+    }
+
+    fun openTtsSettings() {
+        _uiState.update { it.copy(ttsSettingsVisible = true) }
+    }
+
+    fun closeTtsSettings() {
+        _uiState.update { it.copy(ttsSettingsVisible = false, voicePickerExpanded = false) }
+    }
+
+    fun toggleLoop() {
+        val enabled = !_uiState.value.loopEnabled
+        settingsStore.saveLoopPlayback(enabled)
+        controller?.setLoopEnabled(enabled)
+        _uiState.update { it.copy(loopEnabled = enabled) }
     }
 
     fun onVoicePickerExpandedChange(expanded: Boolean) {

@@ -1,6 +1,7 @@
 package com.andriod.reader.data.local
 
 import android.content.Context
+import com.andriod.reader.data.repository.SyncPathUtils
 import com.andriod.reader.domain.Note
 import com.andriod.reader.domain.SyncStatus
 import com.andriod.reader.domain.TrashEntry
@@ -16,6 +17,7 @@ class NoteFileStore @Inject constructor(
     @ApplicationContext private val context: Context,
     private val syncStateStore: SyncStateStore,
     private val trashStore: TrashStore,
+    private val folderStore: FolderStore,
 ) {
     private val notesDir: File
         get() = File(context.filesDir, "notes").also { it.mkdirs() }
@@ -159,6 +161,93 @@ class NoteFileStore @Inject constructor(
         return if (trashFile.exists()) trashFile.readText() else null
     }
 
+    fun listVirtualFolders(): Set<String> = folderStore.listAll()
+
+    fun createFolder(parentFolder: String, folderName: String): String {
+        val folderPath = NotePathNames.buildFolderPath(parentFolder, folderName)
+        require(!isFolderPathTaken(folderPath)) { "同目录下已存在同名文件夹" }
+        val parent = NotePathNames.parentPath(folderPath)
+        if (parent.isNotEmpty()) {
+            folderStore.add(parent)
+        }
+        folderStore.add(folderPath)
+        resolveFile(folderPath).mkdirs()
+        return folderPath
+    }
+
+    fun renameNoteFile(fileName: String, newBaseName: String): String {
+        val newPath = NotePathNames.buildNotePath(
+            parentFolder = NotePathNames.parentPath(fileName),
+            baseName = newBaseName,
+        )
+        require(newPath != fileName) { "名称未改变" }
+        require(!resolveFile(newPath).exists()) { "同目录下已存在同名文件" }
+        val source = resolveFile(fileName)
+        require(source.exists()) { "笔记不存在" }
+
+        val dest = resolveFile(newPath)
+        dest.parentFile?.mkdirs()
+        check(source.renameTo(dest)) { "重命名失败" }
+
+        migrateSyncState(fileName, newPath)
+        return newPath
+    }
+
+    fun renameFolder(folderPath: String, newFolderName: String): String {
+        val oldPath = SyncPathUtils.normalize(folderPath)
+        val parent = NotePathNames.parentPath(oldPath)
+        val newPath = NotePathNames.buildFolderPath(parent, newFolderName)
+        require(newPath != oldPath) { "名称未改变" }
+        require(!hasSiblingFolderConflict(newPath, oldPath)) { "同目录下已存在同名文件夹" }
+
+        val affected = listRelativePaths().filter { path ->
+            path == oldPath || path.startsWith("$oldPath/")
+        }
+        val notePaths = affected.filter { it.endsWith(".md", ignoreCase = true) }
+        val newNotePath = { path: String ->
+            when {
+                path == oldPath -> newPath
+                path.startsWith("$oldPath/") -> path.replaceFirst(oldPath, newPath)
+                else -> path
+            }
+        }
+
+        notePaths.forEach { oldNotePath ->
+            val targetPath = newNotePath(oldNotePath)
+            val source = resolveFile(oldNotePath)
+            val dest = resolveFile(targetPath)
+            dest.parentFile?.mkdirs()
+            check(source.renameTo(dest)) { "重命名失败：$oldNotePath" }
+            migrateSyncState(oldNotePath, targetPath)
+        }
+
+        folderStore.renamePrefix(oldPath, newPath)
+        return newPath
+    }
+
+    fun countNotesUnderFolder(folderPath: String): Int {
+        val prefix = SyncPathUtils.normalize(folderPath)
+        return listRelativePaths().count { path ->
+            path.endsWith(".md", ignoreCase = true) && path.startsWith("$prefix/")
+        }
+    }
+
+    private fun isFolderPathTaken(folderPath: String): Boolean {
+        val norm = SyncPathUtils.normalize(folderPath)
+        if (folderStore.listAll().contains(norm)) return true
+        return listRelativePaths().any { it.startsWith("$norm/") }
+    }
+
+    private fun hasSiblingFolderConflict(newPath: String, oldPath: String): Boolean {
+        val newNorm = SyncPathUtils.normalize(newPath)
+        val oldNorm = SyncPathUtils.normalize(oldPath)
+        if (newNorm == oldNorm) return false
+        if (folderStore.listAll().any { it == newNorm && !it.startsWith("$oldNorm/") }) {
+            return true
+        }
+        return listRelativePaths().any { it.startsWith("$newNorm/") && !it.startsWith("$oldNorm/") }
+    }
+
     @Deprecated("Use moveToTrash", ReplaceWith("moveToTrash(fileName)"))
     fun deleteNote(fileName: String) {
         moveToTrash(fileName)
@@ -182,6 +271,25 @@ class NoteFileStore @Inject constructor(
     }
 
     fun notesDirectory(): File = notesDir
+
+    private fun listRelativePaths(): List<String> =
+        listMarkdownFiles().map { toRelativePath(it) }
+
+    private fun migrateSyncState(oldPath: String, newPath: String) {
+        val states = syncStateStore.readAll().toMutableMap()
+        val state = states.remove(oldPath) ?: return
+        val newStatus = when (state.syncStatus) {
+            SyncStatus.SYNCED, SyncStatus.PENDING -> SyncStatus.PENDING
+            else -> SyncStatus.LOCAL_ONLY
+        }
+        states[newPath] = state.copy(
+            syncStatus = newStatus,
+            remotePath = SyncPathUtils.normalize(newPath),
+            githubSha = null,
+            pendingDelete = false,
+        )
+        syncStateStore.writeAll(states)
+    }
 
     private fun listMarkdownFiles(): List<File> {
         val results = mutableListOf<File>()

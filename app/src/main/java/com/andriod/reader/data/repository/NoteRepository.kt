@@ -42,6 +42,20 @@ class NoteRepository @Inject constructor(
         return MarkdownParser.parse(entry.originalPath, raw).title
     }
 
+    fun listVirtualFolders(): Set<String> = noteFileStore.listVirtualFolders()
+
+    fun createFolder(parentFolder: String, folderName: String): String =
+        noteFileStore.createFolder(parentFolder, folderName)
+
+    fun renameNoteFile(fileName: String, newBaseName: String): String =
+        noteFileStore.renameNoteFile(fileName, newBaseName)
+
+    fun renameFolder(folderPath: String, newFolderName: String): String =
+        noteFileStore.renameFolder(folderPath, newFolderName)
+
+    fun countNotesUnderFolder(folderPath: String): Int =
+        noteFileStore.countNotesUnderFolder(folderPath)
+
     fun markSynced(fileName: String, sha: String) {
         val states = syncStateStore.readAll().toMutableMap()
         states[fileName] = com.andriod.reader.domain.SyncFileState(

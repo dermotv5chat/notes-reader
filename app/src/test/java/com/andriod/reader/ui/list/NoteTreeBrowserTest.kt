@@ -68,6 +68,25 @@ class NoteTreeBrowserTest {
     }
 
     @Test
+    fun listAt_includesVirtualEmptyFolder() {
+        val entries = NoteTreeBrowser.listAt(
+            notes = emptyList(),
+            currentFolder = "work",
+            virtualFolders = setOf("work/empty"),
+        )
+
+        assertEquals(
+            listOf("empty"),
+            entries.map {
+                when (it) {
+                    is NoteTreeBrowser.Entry.Folder -> it.name
+                    is NoteTreeBrowser.Entry.File -> it.note.fileName
+                }
+            },
+        )
+    }
+
+    @Test
     fun isSearchMode_whenQueryPresent() {
         assertTrue(NoteTreeBrowser.isSearchMode("todo"))
     }

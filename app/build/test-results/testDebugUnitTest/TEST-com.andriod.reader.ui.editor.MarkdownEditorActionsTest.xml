@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-06-20T10:24:38" hostname="WILL-WIN" time="0.005">
+<testsuite name="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-06-20T11:04:11" hostname="WILL-WIN" time="0.004">
   <properties/>
   <testcase name="wrap_withSelection_addsBoldMarkers" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.003"/>
   <testcase name="strikethrough_wrapsSelection" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>
   <testcase name="bulletList_appliesToAllLinesInSelection" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>
-  <testcase name="bulletList_toggleRemovesPrefix" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>
+  <testcase name="bulletList_toggleRemovesPrefix" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.001"/>
   <testcase name="wrap_withoutSelection_insertsMarkersWithCursorInside" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>
-  <testcase name="checkbox_addsTodoPrefix" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.001"/>
+  <testcase name="checkbox_addsTodoPrefix" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>
   <testcase name="italic_wrapsSelectedText" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>
   <testcase name="heading_addsHashPrefix" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>
   <testcase name="bulletList_addsPrefixToCurrentLine" classname="com.andriod.reader.ui.editor.MarkdownEditorActionsTest" time="0.0"/>

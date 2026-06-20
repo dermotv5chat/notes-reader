@@ -72,6 +72,12 @@ class SettingsStore @Inject constructor(
         prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply()
     }
 
+    fun isLoopPlaybackEnabled(): Boolean = prefs.getBoolean(KEY_LOOP_PLAYBACK, false)
+
+    fun saveLoopPlayback(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_LOOP_PLAYBACK, enabled).apply()
+    }
+
     companion object {
         private const val KEY_TOKEN = "github_token"
         private const val KEY_OWNER = "github_owner"
@@ -81,5 +87,6 @@ class SettingsStore @Inject constructor(
         private const val KEY_SELECTED_VOICE = "selected_voice_id"
         private const val KEY_VOICE_PREFERENCE = "voice_preference"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
+        private const val KEY_LOOP_PLAYBACK = "loop_playback"
     }
 }

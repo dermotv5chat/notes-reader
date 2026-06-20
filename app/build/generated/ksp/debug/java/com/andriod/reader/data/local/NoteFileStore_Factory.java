@@ -30,25 +30,30 @@ public final class NoteFileStore_Factory implements Factory<NoteFileStore> {
 
   private final Provider<TrashStore> trashStoreProvider;
 
+  private final Provider<FolderStore> folderStoreProvider;
+
   public NoteFileStore_Factory(Provider<Context> contextProvider,
-      Provider<SyncStateStore> syncStateStoreProvider, Provider<TrashStore> trashStoreProvider) {
+      Provider<SyncStateStore> syncStateStoreProvider, Provider<TrashStore> trashStoreProvider,
+      Provider<FolderStore> folderStoreProvider) {
     this.contextProvider = contextProvider;
     this.syncStateStoreProvider = syncStateStoreProvider;
     this.trashStoreProvider = trashStoreProvider;
+    this.folderStoreProvider = folderStoreProvider;
   }
 
   @Override
   public NoteFileStore get() {
-    return newInstance(contextProvider.get(), syncStateStoreProvider.get(), trashStoreProvider.get());
+    return newInstance(contextProvider.get(), syncStateStoreProvider.get(), trashStoreProvider.get(), folderStoreProvider.get());
   }
 
   public static NoteFileStore_Factory create(Provider<Context> contextProvider,
-      Provider<SyncStateStore> syncStateStoreProvider, Provider<TrashStore> trashStoreProvider) {
-    return new NoteFileStore_Factory(contextProvider, syncStateStoreProvider, trashStoreProvider);
+      Provider<SyncStateStore> syncStateStoreProvider, Provider<TrashStore> trashStoreProvider,
+      Provider<FolderStore> folderStoreProvider) {
+    return new NoteFileStore_Factory(contextProvider, syncStateStoreProvider, trashStoreProvider, folderStoreProvider);
   }
 
   public static NoteFileStore newInstance(Context context, SyncStateStore syncStateStore,
-      TrashStore trashStore) {
-    return new NoteFileStore(context, syncStateStore, trashStore);
+      TrashStore trashStore, FolderStore folderStore) {
+    return new NoteFileStore(context, syncStateStore, trashStore, folderStore);
   }
 }

@@ -2,6 +2,7 @@ package com.andriod.reader.ui.list
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andriod.reader.data.local.NotePathNames
 import com.andriod.reader.data.repository.NoteRepository
 import com.andriod.reader.data.repository.SyncRepository
 import com.andriod.reader.domain.ConflictAction
@@ -34,16 +35,35 @@ data class TrashEntryUi(
     val wasSynced: Boolean,
 )
 
+sealed interface NameDialogState {
+    data class RenameNote(
+        val fileName: String,
+        val currentName: String,
+    ) : NameDialogState
+
+    data class RenameFolder(
+        val folderPath: String,
+        val currentName: String,
+        val childNoteCount: Int,
+    ) : NameDialogState
+
+    data class CreateFolder(
+        val parentFolder: String,
+    ) : NameDialogState
+}
+
 data class NoteListUiState(
     val notes: List<Note> = emptyList(),
+    val virtualFolders: Set<String> = emptySet(),
     val currentFolder: String = "",
     val query: String = "",
     val isSyncing: Boolean = false,
     val message: String? = null,
     val conflict: SyncConflict? = null,
-    val expandedNoteKey: String? = null,
+    val expandedRowKey: String? = null,
     val deleteConfirm: PendingDelete? = null,
     val permanentDeleteConfirm: TrashEntryUi? = null,
+    val nameDialog: NameDialogState? = null,
     val showTrash: Boolean = false,
     val trashEntries: List<TrashEntryUi> = emptyList(),
     val lastTrashIdForUndo: String? = null,
@@ -66,6 +86,7 @@ class NoteListViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 notes = noteRepository.listNotes(it.query),
+                virtualFolders = noteRepository.listVirtualFolders(),
                 trashEntries = loadTrashEntries(),
                 message = null,
             )
@@ -78,7 +99,7 @@ class NoteListViewModel @Inject constructor(
                 query = query,
                 notes = noteRepository.listNotes(query),
                 currentFolder = if (query.isBlank()) it.currentFolder else "",
-                expandedNoteKey = null,
+                expandedRowKey = null,
             )
         }
     }
@@ -89,7 +110,8 @@ class NoteListViewModel @Inject constructor(
                 currentFolder = path,
                 query = "",
                 notes = noteRepository.listNotes(""),
-                expandedNoteKey = null,
+                virtualFolders = noteRepository.listVirtualFolders(),
+                expandedRowKey = null,
             )
         }
     }
@@ -98,17 +120,109 @@ class NoteListViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 currentFolder = NoteTreeBrowser.parentFolder(it.currentFolder),
-                expandedNoteKey = null,
+                expandedRowKey = null,
             )
         }
     }
 
+    fun onRowExpanded(rowKey: String) {
+        _uiState.update { it.copy(expandedRowKey = rowKey) }
+    }
+
+    fun clearExpandedRow() {
+        _uiState.update { it.copy(expandedRowKey = null) }
+    }
+
+    fun requestCreateFolder() {
+        _uiState.update {
+            it.copy(
+                nameDialog = NameDialogState.CreateFolder(parentFolder = it.currentFolder),
+                expandedRowKey = null,
+            )
+        }
+    }
+
+    fun requestRenameNote(fileName: String) {
+        _uiState.update {
+            it.copy(
+                nameDialog = NameDialogState.RenameNote(
+                    fileName = fileName,
+                    currentName = NotePathNames.noteBaseName(fileName),
+                ),
+                expandedRowKey = null,
+            )
+        }
+    }
+
+    fun requestRenameFolder(folderPath: String) {
+        _uiState.update {
+            it.copy(
+                nameDialog = NameDialogState.RenameFolder(
+                    folderPath = folderPath,
+                    currentName = folderPath.substringAfterLast('/'),
+                    childNoteCount = noteRepository.countNotesUnderFolder(folderPath),
+                ),
+                expandedRowKey = null,
+            )
+        }
+    }
+
+    fun cancelNameDialog() {
+        _uiState.update { it.copy(nameDialog = null) }
+    }
+
+    fun confirmNameDialog(newName: String) {
+        val dialog = _uiState.value.nameDialog ?: return
+        runCatching {
+            when (dialog) {
+                is NameDialogState.RenameNote -> {
+                    noteRepository.renameNoteFile(dialog.fileName, newName)
+                }
+                is NameDialogState.RenameFolder -> {
+                    val newPath = noteRepository.renameFolder(dialog.folderPath, newName)
+                    val state = _uiState.value
+                    if (state.currentFolder == dialog.folderPath) {
+                        _uiState.update { it.copy(currentFolder = newPath) }
+                    } else if (state.currentFolder.startsWith("${dialog.folderPath}/")) {
+                        _uiState.update {
+                            it.copy(
+                                currentFolder = state.currentFolder.replaceFirst(
+                                    dialog.folderPath,
+                                    newPath,
+                                ),
+                            )
+                        }
+                    }
+                }
+                is NameDialogState.CreateFolder -> {
+                    val path = noteRepository.createFolder(dialog.parentFolder, newName)
+                    openFolder(path)
+                }
+            }
+        }.onSuccess {
+            refresh()
+            _uiState.update {
+                it.copy(
+                    nameDialog = null,
+                    message = when (dialog) {
+                        is NameDialogState.CreateFolder -> "已创建文件夹"
+                        else -> "已重命名"
+                    },
+                )
+            }
+        }.onFailure { error ->
+            _uiState.update {
+                it.copy(message = error.message ?: "操作失败")
+            }
+        }
+    }
+
     fun onNoteRowExpanded(fileName: String) {
-        _uiState.update { it.copy(expandedNoteKey = fileName) }
+        onRowExpanded(fileName)
     }
 
     fun clearExpandedNote() {
-        _uiState.update { it.copy(expandedNoteKey = null) }
+        clearExpandedRow()
     }
 
     fun requestDelete(fileName: String) {
@@ -121,7 +235,7 @@ class NoteListViewModel @Inject constructor(
                     title = note.title,
                     wasSynced = note.syncStatus == SyncStatus.SYNCED,
                 ),
-                expandedNoteKey = null,
+                expandedRowKey = null,
             )
         }
     }
@@ -137,7 +251,7 @@ class NoteListViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 deleteConfirm = null,
-                expandedNoteKey = null,
+                expandedRowKey = null,
                 lastTrashIdForUndo = entry.id,
                 undoTrashEvent = System.currentTimeMillis(),
             )
@@ -170,7 +284,7 @@ class NoteListViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 showTrash = true,
-                expandedNoteKey = null,
+                expandedRowKey = null,
                 trashEntries = loadTrashEntries(),
             )
         }

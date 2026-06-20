@@ -8,26 +8,19 @@ object NoteTreeBrowser {
         data class File(val note: Note) : Entry
     }
 
-    fun listAt(notes: List<Note>, currentFolder: String): List<Entry> {
-        if (notes.isEmpty()) return emptyList()
+    fun listAt(notes: List<Note>, currentFolder: String, virtualFolders: Set<String> = emptySet()): List<Entry> {
+        if (notes.isEmpty() && virtualFolders.isEmpty()) return emptyList()
 
         val current = normalizeFolder(currentFolder)
         val folders = linkedSetOf<String>()
         val files = mutableListOf<Note>()
 
         notes.forEach { note ->
-            val path = note.fileName.replace('\\', '/')
-            if (current.isNotEmpty() && !path.startsWith("$current/")) return@forEach
+            collectEntry(note.fileName.replace('\\', '/'), current, folders, files, note)
+        }
 
-            val relative = if (current.isEmpty()) path else path.removePrefix("$current/")
-            if (relative.isEmpty()) return@forEach
-
-            val slashIndex = relative.indexOf('/')
-            if (slashIndex < 0) {
-                files += note
-            } else {
-                folders += relative.substring(0, slashIndex)
-            }
+        virtualFolders.forEach { folderPath ->
+            collectVirtualFolder(folderPath.replace('\\', '/'), current, folders)
         }
 
         val folderEntries = folders.sorted().map { name ->
@@ -53,6 +46,44 @@ object NoteTreeBrowser {
     }
 
     fun isSearchMode(query: String): Boolean = query.isNotBlank()
+
+    private fun collectEntry(
+        path: String,
+        current: String,
+        folders: MutableSet<String>,
+        files: MutableList<Note>,
+        note: Note,
+    ) {
+        if (current.isNotEmpty() && !path.startsWith("$current/")) return
+
+        val relative = if (current.isEmpty()) path else path.removePrefix("$current/")
+        if (relative.isEmpty()) return
+
+        val slashIndex = relative.indexOf('/')
+        if (slashIndex < 0) {
+            files += note
+        } else {
+            folders += relative.substring(0, slashIndex)
+        }
+    }
+
+    private fun collectVirtualFolder(
+        folderPath: String,
+        current: String,
+        folders: MutableSet<String>,
+    ) {
+        if (current.isNotEmpty() && !folderPath.startsWith("$current/")) return
+
+        val relative = if (current.isEmpty()) folderPath else folderPath.removePrefix("$current/")
+        if (relative.isEmpty()) return
+
+        val slashIndex = relative.indexOf('/')
+        if (slashIndex < 0) {
+            folders += relative
+        } else {
+            folders += relative.substring(0, slashIndex)
+        }
+    }
 
     private fun normalizeFolder(folder: String): String =
         folder.trim().trim('/').replace('\\', '/')

@@ -46,6 +46,7 @@ class TtsController(
     private var pitch = 1.0f
     private val isPlaying = AtomicBoolean(false)
     private val isPaused = AtomicBoolean(false)
+    private var loopEnabled = false
     private var engineTryOrder: List<String?> = emptyList()
     private var engineTryIndex = 0
     private var activeEnginePackage: String? = null
@@ -78,6 +79,10 @@ class TtsController(
                     if (!isPlaying.get() || isPaused.get()) return
                     if (currentIndex < segments.lastIndex) {
                         currentIndex++
+                        onSegmentChanged(currentIndex, segments.size)
+                        speakCurrent()
+                    } else if (TtsPlaybackEndAction.shouldRestartAfterLastSegment(loopEnabled)) {
+                        currentIndex = 0
                         onSegmentChanged(currentIndex, segments.size)
                         speakCurrent()
                     } else {
@@ -169,6 +174,12 @@ class TtsController(
         pitch = value
         tts?.setPitch(value)
     }
+
+    fun setLoopEnabled(enabled: Boolean) {
+        loopEnabled = enabled
+    }
+
+    fun isLoopEnabled(): Boolean = loopEnabled
 
     fun diagnostics(): TtsHelper.TtsDiagnostics =
         TtsHelper.getDiagnostics(

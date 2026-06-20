@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.andriod.reader.data.local.NotePathNamesTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-06-20T11:04:11" hostname="WILL-WIN" time="0.001">
+  <properties/>
+  <testcase name="buildFolderPath_atRoot" classname="com.andriod.reader.data.local.NotePathNamesTest" time="0.0"/>
+  <testcase name="buildNotePath_keepsParentFolder" classname="com.andriod.reader.data.local.NotePathNamesTest" time="0.0"/>
+  <testcase name="validateSegment_rejectsSlashes" classname="com.andriod.reader.data.local.NotePathNamesTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
