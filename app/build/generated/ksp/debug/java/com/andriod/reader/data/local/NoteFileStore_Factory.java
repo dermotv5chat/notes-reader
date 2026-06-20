@@ -28,23 +28,27 @@ public final class NoteFileStore_Factory implements Factory<NoteFileStore> {
 
   private final Provider<SyncStateStore> syncStateStoreProvider;
 
+  private final Provider<TrashStore> trashStoreProvider;
+
   public NoteFileStore_Factory(Provider<Context> contextProvider,
-      Provider<SyncStateStore> syncStateStoreProvider) {
+      Provider<SyncStateStore> syncStateStoreProvider, Provider<TrashStore> trashStoreProvider) {
     this.contextProvider = contextProvider;
     this.syncStateStoreProvider = syncStateStoreProvider;
+    this.trashStoreProvider = trashStoreProvider;
   }
 
   @Override
   public NoteFileStore get() {
-    return newInstance(contextProvider.get(), syncStateStoreProvider.get());
+    return newInstance(contextProvider.get(), syncStateStoreProvider.get(), trashStoreProvider.get());
   }
 
   public static NoteFileStore_Factory create(Provider<Context> contextProvider,
-      Provider<SyncStateStore> syncStateStoreProvider) {
-    return new NoteFileStore_Factory(contextProvider, syncStateStoreProvider);
+      Provider<SyncStateStore> syncStateStoreProvider, Provider<TrashStore> trashStoreProvider) {
+    return new NoteFileStore_Factory(contextProvider, syncStateStoreProvider, trashStoreProvider);
   }
 
-  public static NoteFileStore newInstance(Context context, SyncStateStore syncStateStore) {
-    return new NoteFileStore(context, syncStateStore);
+  public static NoteFileStore newInstance(Context context, SyncStateStore syncStateStore,
+      TrashStore trashStore) {
+    return new NoteFileStore(context, syncStateStore, trashStore);
   }
 }

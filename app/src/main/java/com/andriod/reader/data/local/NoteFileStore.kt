@@ -3,9 +3,11 @@ package com.andriod.reader.data.local
 import android.content.Context
 import com.andriod.reader.domain.Note
 import com.andriod.reader.domain.SyncStatus
+import com.andriod.reader.domain.TrashEntry
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.time.Instant
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -13,9 +15,13 @@ import javax.inject.Singleton
 class NoteFileStore @Inject constructor(
     @ApplicationContext private val context: Context,
     private val syncStateStore: SyncStateStore,
+    private val trashStore: TrashStore,
 ) {
     private val notesDir: File
         get() = File(context.filesDir, "notes").also { it.mkdirs() }
+
+    private val trashDir: File
+        get() = File(context.filesDir, "trash").also { it.mkdirs() }
 
     fun listNotes(): List<Note> {
         val files = listMarkdownFiles().sortedByDescending { it.lastModified() }
@@ -88,18 +94,74 @@ class NoteFileStore @Inject constructor(
         return note
     }
 
-    fun deleteNote(fileName: String) {
+    fun moveToTrash(fileName: String): TrashEntry {
+        val file = resolveFile(fileName)
+        require(file.exists()) { "Note not found: $fileName" }
+        val raw = file.readText()
         val states = syncStateStore.readAll().toMutableMap()
-        val state = states[fileName]
-        if (state?.githubSha != null) {
-            states[fileName] = state.copy(pendingDelete = true, syncStatus = SyncStatus.PENDING)
+        val syncState = states[fileName] ?: com.andriod.reader.domain.SyncFileState()
+
+        val id = UUID.randomUUID().toString()
+        val trashFile = File(trashDir, "$id.md")
+        trashFile.writeText(raw)
+        file.delete()
+        cleanupEmptyParents(file.parentFile)
+        states.remove(fileName)
+        syncStateStore.writeAll(states)
+
+        val entry = TrashEntry(
+            id = id,
+            originalPath = fileName,
+            deletedAt = Instant.now(),
+            syncState = syncState,
+        )
+        trashStore.add(entry)
+        return entry
+    }
+
+    fun restoreFromTrash(entryId: String) {
+        val entry = trashStore.get(entryId) ?: return
+        val trashFile = File(trashDir, "${entry.id}.md")
+        require(trashFile.exists()) { "Trash file missing: $entryId" }
+
+        val target = resolveFile(entry.originalPath)
+        target.parentFile?.mkdirs()
+        target.writeText(trashFile.readText())
+        trashFile.delete()
+
+        val states = syncStateStore.readAll().toMutableMap()
+        states[entry.originalPath] = entry.syncState.copy(pendingDelete = false)
+        syncStateStore.writeAll(states)
+        trashStore.remove(entryId)
+    }
+
+    fun permanentDeleteFromTrash(entryId: String) {
+        val entry = trashStore.get(entryId) ?: return
+        val trashFile = File(trashDir, "${entry.id}.md")
+        trashFile.delete()
+        trashStore.remove(entryId)
+
+        if (entry.syncState.githubSha != null) {
+            val states = syncStateStore.readAll().toMutableMap()
+            states[entry.originalPath] = entry.syncState.copy(
+                pendingDelete = true,
+                syncStatus = SyncStatus.PENDING,
+            )
             syncStateStore.writeAll(states)
-        } else {
-            states.remove(fileName)
-            syncStateStore.writeAll(states)
-            resolveFile(fileName).delete()
-            cleanupEmptyParents(resolveFile(fileName).parentFile)
         }
+    }
+
+    fun listTrashEntries(): List<TrashEntry> = trashStore.listAll()
+
+    fun readTrashRaw(entryId: String): String? {
+        val entry = trashStore.get(entryId) ?: return null
+        val trashFile = File(trashDir, "${entry.id}.md")
+        return if (trashFile.exists()) trashFile.readText() else null
+    }
+
+    @Deprecated("Use moveToTrash", ReplaceWith("moveToTrash(fileName)"))
+    fun deleteNote(fileName: String) {
+        moveToTrash(fileName)
     }
 
     fun writeRawFile(fileName: String, rawContent: String) {

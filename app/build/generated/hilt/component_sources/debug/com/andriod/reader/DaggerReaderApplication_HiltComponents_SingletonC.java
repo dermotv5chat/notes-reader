@@ -8,6 +8,7 @@ import androidx.lifecycle.SavedStateHandle;
 import androidx.lifecycle.ViewModel;
 import com.andriod.reader.data.local.NoteFileStore;
 import com.andriod.reader.data.local.SyncStateStore;
+import com.andriod.reader.data.local.TrashStore;
 import com.andriod.reader.data.remote.GitHubApi;
 import com.andriod.reader.data.remote.SettingsStore;
 import com.andriod.reader.data.repository.NoteRepository;
@@ -406,25 +407,25 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_andriod_reader_ui_editor_EditorViewModel = "com.andriod.reader.ui.editor.EditorViewModel";
+      static String com_andriod_reader_ui_reader_ReaderViewModel = "com.andriod.reader.ui.reader.ReaderViewModel";
 
-      static String com_andriod_reader_ui_list_NoteListViewModel = "com.andriod.reader.ui.list.NoteListViewModel";
+      static String com_andriod_reader_ui_editor_EditorViewModel = "com.andriod.reader.ui.editor.EditorViewModel";
 
       static String com_andriod_reader_ui_settings_SettingsViewModel = "com.andriod.reader.ui.settings.SettingsViewModel";
 
-      static String com_andriod_reader_ui_reader_ReaderViewModel = "com.andriod.reader.ui.reader.ReaderViewModel";
+      static String com_andriod_reader_ui_list_NoteListViewModel = "com.andriod.reader.ui.list.NoteListViewModel";
+
+      @KeepFieldType
+      ReaderViewModel com_andriod_reader_ui_reader_ReaderViewModel2;
 
       @KeepFieldType
       EditorViewModel com_andriod_reader_ui_editor_EditorViewModel2;
 
       @KeepFieldType
-      NoteListViewModel com_andriod_reader_ui_list_NoteListViewModel2;
-
-      @KeepFieldType
       SettingsViewModel com_andriod_reader_ui_settings_SettingsViewModel2;
 
       @KeepFieldType
-      ReaderViewModel com_andriod_reader_ui_reader_ReaderViewModel2;
+      NoteListViewModel com_andriod_reader_ui_list_NoteListViewModel2;
     }
   }
 
@@ -476,25 +477,25 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_andriod_reader_ui_list_NoteListViewModel = "com.andriod.reader.ui.list.NoteListViewModel";
-
-      static String com_andriod_reader_ui_settings_SettingsViewModel = "com.andriod.reader.ui.settings.SettingsViewModel";
-
       static String com_andriod_reader_ui_editor_EditorViewModel = "com.andriod.reader.ui.editor.EditorViewModel";
+
+      static String com_andriod_reader_ui_list_NoteListViewModel = "com.andriod.reader.ui.list.NoteListViewModel";
 
       static String com_andriod_reader_ui_reader_ReaderViewModel = "com.andriod.reader.ui.reader.ReaderViewModel";
 
-      @KeepFieldType
-      NoteListViewModel com_andriod_reader_ui_list_NoteListViewModel2;
-
-      @KeepFieldType
-      SettingsViewModel com_andriod_reader_ui_settings_SettingsViewModel2;
+      static String com_andriod_reader_ui_settings_SettingsViewModel = "com.andriod.reader.ui.settings.SettingsViewModel";
 
       @KeepFieldType
       EditorViewModel com_andriod_reader_ui_editor_EditorViewModel2;
 
       @KeepFieldType
+      NoteListViewModel com_andriod_reader_ui_list_NoteListViewModel2;
+
+      @KeepFieldType
       ReaderViewModel com_andriod_reader_ui_reader_ReaderViewModel2;
+
+      @KeepFieldType
+      SettingsViewModel com_andriod_reader_ui_settings_SettingsViewModel2;
     }
 
     private static final class SwitchingProvider<T> implements Provider<T> {
@@ -616,6 +617,8 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
 
     private Provider<SyncStateStore> syncStateStoreProvider;
 
+    private Provider<TrashStore> trashStoreProvider;
+
     private Provider<NoteFileStore> noteFileStoreProvider;
 
     private Provider<NoteRepository> noteRepositoryProvider;
@@ -637,11 +640,12 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
       this.settingsStoreProvider = DoubleCheck.provider(new SwitchingProvider<SettingsStore>(singletonCImpl, 0));
       this.provideGsonProvider = DoubleCheck.provider(new SwitchingProvider<Gson>(singletonCImpl, 4));
       this.syncStateStoreProvider = DoubleCheck.provider(new SwitchingProvider<SyncStateStore>(singletonCImpl, 3));
+      this.trashStoreProvider = DoubleCheck.provider(new SwitchingProvider<TrashStore>(singletonCImpl, 5));
       this.noteFileStoreProvider = DoubleCheck.provider(new SwitchingProvider<NoteFileStore>(singletonCImpl, 2));
       this.noteRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<NoteRepository>(singletonCImpl, 1));
-      this.provideOkHttpClientProvider = DoubleCheck.provider(new SwitchingProvider<OkHttpClient>(singletonCImpl, 7));
-      this.provideGitHubApiProvider = DoubleCheck.provider(new SwitchingProvider<GitHubApi>(singletonCImpl, 6));
-      this.syncRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<SyncRepository>(singletonCImpl, 5));
+      this.provideOkHttpClientProvider = DoubleCheck.provider(new SwitchingProvider<OkHttpClient>(singletonCImpl, 8));
+      this.provideGitHubApiProvider = DoubleCheck.provider(new SwitchingProvider<GitHubApi>(singletonCImpl, 7));
+      this.syncRepositoryProvider = DoubleCheck.provider(new SwitchingProvider<SyncRepository>(singletonCImpl, 6));
     }
 
     @Override
@@ -689,7 +693,7 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
           return (T) new NoteRepository(singletonCImpl.noteFileStoreProvider.get(), singletonCImpl.syncStateStoreProvider.get());
 
           case 2: // com.andriod.reader.data.local.NoteFileStore 
-          return (T) new NoteFileStore(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.syncStateStoreProvider.get());
+          return (T) new NoteFileStore(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.syncStateStoreProvider.get(), singletonCImpl.trashStoreProvider.get());
 
           case 3: // com.andriod.reader.data.local.SyncStateStore 
           return (T) new SyncStateStore(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideGsonProvider.get());
@@ -697,13 +701,16 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
           case 4: // com.google.gson.Gson 
           return (T) AppModule_ProvideGsonFactory.provideGson();
 
-          case 5: // com.andriod.reader.data.repository.SyncRepository 
+          case 5: // com.andriod.reader.data.local.TrashStore 
+          return (T) new TrashStore(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.provideGsonProvider.get());
+
+          case 6: // com.andriod.reader.data.repository.SyncRepository 
           return (T) new SyncRepository(singletonCImpl.provideGitHubApiProvider.get(), singletonCImpl.settingsStoreProvider.get(), singletonCImpl.noteFileStoreProvider.get(), singletonCImpl.syncStateStoreProvider.get());
 
-          case 6: // com.andriod.reader.data.remote.GitHubApi 
+          case 7: // com.andriod.reader.data.remote.GitHubApi 
           return (T) AppModule_ProvideGitHubApiFactory.provideGitHubApi(singletonCImpl.provideOkHttpClientProvider.get(), singletonCImpl.provideGsonProvider.get());
 
-          case 7: // okhttp3.OkHttpClient 
+          case 8: // okhttp3.OkHttpClient 
           return (T) AppModule_ProvideOkHttpClientFactory.provideOkHttpClient();
 
           default: throw new AssertionError(id);

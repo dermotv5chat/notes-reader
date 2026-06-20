@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andriod.reader.ui.editor.EditorUndoHistoryTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-06-20T09:56:47" hostname="WILL-WIN" time="0.008">
+<testsuite name="com.andriod.reader.ui.editor.EditorUndoHistoryTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-06-20T10:24:42" hostname="WILL-WIN" time="0.007">
   <properties/>
-  <testcase name="undo_redo_roundTrip" classname="com.andriod.reader.ui.editor.EditorUndoHistoryTest" time="0.008"/>
+  <testcase name="undo_redo_roundTrip" classname="com.andriod.reader.ui.editor.EditorUndoHistoryTest" time="0.007"/>
   <testcase name="record_clearsRedoStack" classname="com.andriod.reader.ui.editor.EditorUndoHistoryTest" time="0.0"/>
   <testcase name="undo_whenEmpty_returnsNull" classname="com.andriod.reader.ui.editor.EditorUndoHistoryTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>

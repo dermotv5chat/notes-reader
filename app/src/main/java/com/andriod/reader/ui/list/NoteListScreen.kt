@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,9 +17,10 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,8 +31,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -65,7 +69,7 @@ fun NoteListScreen(
     val formatter = remember { DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm") }
     val lifecycleOwner = LocalLifecycleOwner.current
     val searchMode = NoteTreeBrowser.isSearchMode(uiState.query)
-    val canNavigateUp = !searchMode && uiState.currentFolder.isNotEmpty()
+    val canNavigateUp = !searchMode && !uiState.showTrash && uiState.currentFolder.isNotEmpty()
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -81,6 +85,20 @@ fun NoteListScreen(
         uiState.message?.let {
             snackbar.showSnackbar(it)
             viewModel.clearMessage()
+        }
+    }
+
+    LaunchedEffect(uiState.undoTrashEvent) {
+        uiState.undoTrashEvent ?: return@LaunchedEffect
+        val result = snackbar.showSnackbar(
+            message = "已移入回收站",
+            actionLabel = "撤销",
+            duration = SnackbarDuration.Long,
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            viewModel.undoLastDelete()
+        } else {
+            viewModel.clearUndoTrash()
         }
     }
 
@@ -114,25 +132,101 @@ fun NoteListScreen(
         )
     }
 
+    uiState.deleteConfirm?.let { pending ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelDelete,
+            title = { Text("删除笔记？") },
+            text = {
+                Column {
+                    Text("「${pending.title}」")
+                    Text(
+                        pending.fileName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                    if (pending.wasSynced) {
+                        Text(
+                            "该笔记已同步，上传后将从 GitHub 删除。",
+                            modifier = Modifier.padding(top = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::confirmDelete) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::cancelDelete) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    uiState.permanentDeleteConfirm?.let { entry ->
+        AlertDialog(
+            onDismissRequest = viewModel::cancelPermanentDelete,
+            title = { Text("永久删除？") },
+            text = {
+                Column {
+                    Text("「${entry.title}」将无法恢复。")
+                    if (entry.wasSynced) {
+                        Text(
+                            "上传后将从 GitHub 删除远程副本。",
+                            modifier = Modifier.padding(top = 8.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::confirmPermanentDelete) {
+                    Text("永久删除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::cancelPermanentDelete) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
                         when {
+                            uiState.showTrash -> "回收站"
                             searchMode -> "搜索「${uiState.query}」"
                             else -> NoteTreeBrowser.displayFolderTitle(uiState.currentFolder)
                         },
                     )
                 },
                 navigationIcon = {
-                    if (canNavigateUp) {
-                        IconButton(onClick = viewModel::navigateUp) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回上级")
+                    when {
+                        uiState.showTrash -> {
+                            IconButton(onClick = viewModel::closeTrash) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                            }
+                        }
+                        canNavigateUp -> {
+                            IconButton(onClick = viewModel::navigateUp) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回上级")
+                            }
                         }
                     }
                 },
                 actions = {
+                    if (!uiState.showTrash) {
+                        IconButton(onClick = viewModel::openTrash) {
+                            Icon(Icons.Default.DeleteSweep, contentDescription = "回收站")
+                        }
+                    }
                     if (uiState.isSyncing) {
                         CircularProgressIndicator(modifier = Modifier.padding(12.dp))
                     } else {
@@ -147,8 +241,10 @@ fun NoteListScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onCreateNote) {
-                Icon(Icons.Default.Add, contentDescription = "新建")
+            if (!uiState.showTrash) {
+                FloatingActionButton(onClick = onCreateNote) {
+                    Icon(Icons.Default.Add, contentDescription = "新建")
+                }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -159,31 +255,51 @@ fun NoteListScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp),
         ) {
-            OutlinedTextField(
-                value = uiState.query,
-                onValueChange = viewModel::onQueryChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                placeholder = { Text("搜索笔记") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-            )
+            if (!uiState.showTrash) {
+                OutlinedTextField(
+                    value = uiState.query,
+                    onValueChange = viewModel::onQueryChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    placeholder = { Text("搜索笔记") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true,
+                )
+            }
 
-            if (uiState.notes.isEmpty()) {
+            if (uiState.showTrash) {
+                TrashList(
+                    entries = uiState.trashEntries,
+                    formatter = formatter,
+                    onRestore = viewModel::restoreTrash,
+                    onPermanentDelete = viewModel::requestPermanentDelete,
+                )
+            } else if (uiState.notes.isEmpty()) {
                 EmptyNotesHint(searchMode = searchMode)
             } else if (searchMode) {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(uiState.notes, key = { it.fileName }) { note ->
-                        NoteRow(
-                            title = note.title,
-                            subtitle = note.fileName,
-                            updatedAt = formatter.format(note.updatedAt.atZone(ZoneId.systemDefault())),
-                            syncStatus = note.syncStatus,
+                        SwipeNoteRow(
+                            isExpanded = uiState.expandedNoteKey == note.fileName,
+                            onExpandedChange = { expanded ->
+                                if (expanded) {
+                                    viewModel.onNoteRowExpanded(note.fileName)
+                                } else if (uiState.expandedNoteKey == note.fileName) {
+                                    viewModel.clearExpandedNote()
+                                }
+                            },
                             onOpen = { onOpenNote(note.fileName) },
                             onEdit = { onEditNote(note.fileName) },
-                            onDelete = { viewModel.deleteNote(note.fileName) },
-                        )
+                            onDelete = { viewModel.requestDelete(note.fileName) },
+                        ) {
+                            NoteRowContent(
+                                title = note.title,
+                                subtitle = note.fileName,
+                                updatedAt = formatter.format(note.updatedAt.atZone(ZoneId.systemDefault())),
+                                syncStatus = note.syncStatus,
+                            )
+                        }
                     }
                 }
             } else {
@@ -206,22 +322,98 @@ fun NoteListScreen(
                                     name = entry.name,
                                     onOpen = { viewModel.openFolder(entry.path) },
                                 )
-                                is NoteTreeBrowser.Entry.File -> NoteRow(
-                                    title = entry.note.title,
-                                    subtitle = null,
-                                    updatedAt = formatter.format(
-                                        entry.note.updatedAt.atZone(ZoneId.systemDefault()),
-                                    ),
-                                    syncStatus = entry.note.syncStatus,
+                                is NoteTreeBrowser.Entry.File -> SwipeNoteRow(
+                                    isExpanded = uiState.expandedNoteKey == entry.note.fileName,
+                                    onExpandedChange = { expanded ->
+                                        if (expanded) {
+                                            viewModel.onNoteRowExpanded(entry.note.fileName)
+                                        } else if (uiState.expandedNoteKey == entry.note.fileName) {
+                                            viewModel.clearExpandedNote()
+                                        }
+                                    },
                                     onOpen = { onOpenNote(entry.note.fileName) },
                                     onEdit = { onEditNote(entry.note.fileName) },
-                                    onDelete = { viewModel.deleteNote(entry.note.fileName) },
-                                )
+                                    onDelete = { viewModel.requestDelete(entry.note.fileName) },
+                                ) {
+                                    NoteRowContent(
+                                        title = entry.note.title,
+                                        subtitle = null,
+                                        updatedAt = formatter.format(
+                                            entry.note.updatedAt.atZone(ZoneId.systemDefault()),
+                                        ),
+                                        syncStatus = entry.note.syncStatus,
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun TrashList(
+    entries: List<TrashEntryUi>,
+    formatter: DateTimeFormatter,
+    onRestore: (String) -> Unit,
+    onPermanentDelete: (TrashEntryUi) -> Unit,
+) {
+    if (entries.isEmpty()) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("回收站是空的")
+        }
+        return
+    }
+
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        items(entries, key = { it.id }) { entry ->
+            TrashRow(
+                entry = entry,
+                deletedAt = formatter.format(entry.deletedAt.atZone(ZoneId.systemDefault())),
+                onRestore = { onRestore(entry.id) },
+                onPermanentDelete = { onPermanentDelete(entry) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun TrashRow(
+    entry: TrashEntryUi,
+    deletedAt: String,
+    onRestore: () -> Unit,
+    onPermanentDelete: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(entry.title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                entry.originalPath,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            Text(deletedAt, style = MaterialTheme.typography.bodySmall)
+        }
+        IconButton(onClick = onRestore) {
+            Icon(Icons.Default.Restore, contentDescription = "恢复")
+        }
+        IconButton(onClick = onPermanentDelete) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "永久删除",
+                tint = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }
@@ -267,40 +459,23 @@ private fun FolderRow(
 }
 
 @Composable
-private fun NoteRow(
+private fun RowScope.NoteRowContent(
     title: String,
     subtitle: String?,
     updatedAt: String,
     syncStatus: SyncStatus,
-    onOpen: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val icon = when (syncStatus) {
-            SyncStatus.SYNCED -> Icons.Default.Cloud
-            SyncStatus.PENDING -> Icons.Default.CloudUpload
-            SyncStatus.LOCAL_ONLY -> Icons.Default.CloudOff
+    val icon = when (syncStatus) {
+        SyncStatus.SYNCED -> Icons.Default.Cloud
+        SyncStatus.PENDING -> Icons.Default.CloudUpload
+        SyncStatus.LOCAL_ONLY -> Icons.Default.CloudOff
+    }
+    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+    Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium)
+        subtitle?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
         }
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            subtitle?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-            }
-            Text(updatedAt, style = MaterialTheme.typography.bodySmall)
-        }
-        IconButton(onClick = onEdit) {
-            Icon(Icons.Default.Edit, contentDescription = "编辑")
-        }
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Delete, contentDescription = "删除")
-        }
+        Text(updatedAt, style = MaterialTheme.typography.bodySmall)
     }
 }

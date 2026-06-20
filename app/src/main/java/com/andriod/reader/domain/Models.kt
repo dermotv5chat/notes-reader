@@ -45,3 +45,10 @@ data class SyncConflict(
     val localUpdatedAt: Instant,
     val remoteUpdatedAt: Instant,
 )
+
+data class TrashEntry(
+    val id: String,
+    val originalPath: String,
+    val deletedAt: Instant,
+    val syncState: SyncFileState,
+)

@@ -79,7 +79,9 @@ class SyncRepository @Inject constructor(
                             message = "Delete note $localPath",
                             sha = sha,
                         )
-                        noteFileStore.deleteLocalFile(localPath)
+                        if (noteFileStore.readRawFile(localPath) != null) {
+                            noteFileStore.deleteLocalFile(localPath)
+                        }
                         states.remove(localPath)
                         deleted++
                     }

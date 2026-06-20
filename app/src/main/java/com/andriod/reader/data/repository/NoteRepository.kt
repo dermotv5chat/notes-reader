@@ -4,6 +4,7 @@ import com.andriod.reader.data.local.MarkdownParser
 import com.andriod.reader.data.local.NoteFileStore
 import com.andriod.reader.data.local.SyncStateStore
 import com.andriod.reader.domain.Note
+import com.andriod.reader.domain.TrashEntry
 import com.andriod.reader.domain.SyncStatus
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,7 +29,18 @@ class NoteRepository @Inject constructor(
 
     fun saveNote(note: Note): Note = noteFileStore.saveNote(note)
 
-    fun deleteNote(fileName: String) = noteFileStore.deleteNote(fileName)
+    fun moveToTrash(fileName: String): TrashEntry = noteFileStore.moveToTrash(fileName)
+
+    fun restoreFromTrash(entryId: String) = noteFileStore.restoreFromTrash(entryId)
+
+    fun permanentDeleteFromTrash(entryId: String) = noteFileStore.permanentDeleteFromTrash(entryId)
+
+    fun listTrash(): List<TrashEntry> = noteFileStore.listTrashEntries()
+
+    fun getTrashNoteTitle(entry: TrashEntry): String {
+        val raw = noteFileStore.readTrashRaw(entry.id) ?: return entry.originalPath
+        return MarkdownParser.parse(entry.originalPath, raw).title
+    }
 
     fun markSynced(fileName: String, sha: String) {
         val states = syncStateStore.readAll().toMutableMap()
