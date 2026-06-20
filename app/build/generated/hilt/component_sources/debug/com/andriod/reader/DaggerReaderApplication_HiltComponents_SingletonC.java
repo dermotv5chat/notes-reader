@@ -19,6 +19,8 @@ import com.andriod.reader.ui.editor.EditorViewModel;
 import com.andriod.reader.ui.editor.EditorViewModel_HiltModules;
 import com.andriod.reader.ui.list.NoteListViewModel;
 import com.andriod.reader.ui.list.NoteListViewModel_HiltModules;
+import com.andriod.reader.ui.reader.ReaderViewModel;
+import com.andriod.reader.ui.reader.ReaderViewModel_HiltModules;
 import com.andriod.reader.ui.settings.SettingsViewModel;
 import com.andriod.reader.ui.settings.SettingsViewModel_HiltModules;
 import com.google.gson.Gson;
@@ -384,7 +386,7 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
 
     @Override
     public Map<Class<?>, Boolean> getViewModelKeys() {
-      return LazyClassKeyMap.<Boolean>of(MapBuilder.<String, Boolean>newMapBuilder(3).put(LazyClassKeyProvider.com_andriod_reader_ui_editor_EditorViewModel, EditorViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_andriod_reader_ui_list_NoteListViewModel, NoteListViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_andriod_reader_ui_settings_SettingsViewModel, SettingsViewModel_HiltModules.KeyModule.provide()).build());
+      return LazyClassKeyMap.<Boolean>of(MapBuilder.<String, Boolean>newMapBuilder(4).put(LazyClassKeyProvider.com_andriod_reader_ui_editor_EditorViewModel, EditorViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_andriod_reader_ui_list_NoteListViewModel, NoteListViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_andriod_reader_ui_reader_ReaderViewModel, ReaderViewModel_HiltModules.KeyModule.provide()).put(LazyClassKeyProvider.com_andriod_reader_ui_settings_SettingsViewModel, SettingsViewModel_HiltModules.KeyModule.provide()).build());
     }
 
     @Override
@@ -404,20 +406,25 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
+      static String com_andriod_reader_ui_settings_SettingsViewModel = "com.andriod.reader.ui.settings.SettingsViewModel";
+
       static String com_andriod_reader_ui_editor_EditorViewModel = "com.andriod.reader.ui.editor.EditorViewModel";
+
+      static String com_andriod_reader_ui_reader_ReaderViewModel = "com.andriod.reader.ui.reader.ReaderViewModel";
 
       static String com_andriod_reader_ui_list_NoteListViewModel = "com.andriod.reader.ui.list.NoteListViewModel";
 
-      static String com_andriod_reader_ui_settings_SettingsViewModel = "com.andriod.reader.ui.settings.SettingsViewModel";
+      @KeepFieldType
+      SettingsViewModel com_andriod_reader_ui_settings_SettingsViewModel2;
 
       @KeepFieldType
       EditorViewModel com_andriod_reader_ui_editor_EditorViewModel2;
 
       @KeepFieldType
-      NoteListViewModel com_andriod_reader_ui_list_NoteListViewModel2;
+      ReaderViewModel com_andriod_reader_ui_reader_ReaderViewModel2;
 
       @KeepFieldType
-      SettingsViewModel com_andriod_reader_ui_settings_SettingsViewModel2;
+      NoteListViewModel com_andriod_reader_ui_list_NoteListViewModel2;
     }
   }
 
@@ -433,6 +440,8 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
     private Provider<EditorViewModel> editorViewModelProvider;
 
     private Provider<NoteListViewModel> noteListViewModelProvider;
+
+    private Provider<ReaderViewModel> readerViewModelProvider;
 
     private Provider<SettingsViewModel> settingsViewModelProvider;
 
@@ -451,12 +460,13 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
         final ViewModelLifecycle viewModelLifecycleParam) {
       this.editorViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 0);
       this.noteListViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 1);
-      this.settingsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 2);
+      this.readerViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 2);
+      this.settingsViewModelProvider = new SwitchingProvider<>(singletonCImpl, activityRetainedCImpl, viewModelCImpl, 3);
     }
 
     @Override
     public Map<Class<?>, javax.inject.Provider<ViewModel>> getHiltViewModelMap() {
-      return LazyClassKeyMap.<javax.inject.Provider<ViewModel>>of(MapBuilder.<String, javax.inject.Provider<ViewModel>>newMapBuilder(3).put(LazyClassKeyProvider.com_andriod_reader_ui_editor_EditorViewModel, ((Provider) editorViewModelProvider)).put(LazyClassKeyProvider.com_andriod_reader_ui_list_NoteListViewModel, ((Provider) noteListViewModelProvider)).put(LazyClassKeyProvider.com_andriod_reader_ui_settings_SettingsViewModel, ((Provider) settingsViewModelProvider)).build());
+      return LazyClassKeyMap.<javax.inject.Provider<ViewModel>>of(MapBuilder.<String, javax.inject.Provider<ViewModel>>newMapBuilder(4).put(LazyClassKeyProvider.com_andriod_reader_ui_editor_EditorViewModel, ((Provider) editorViewModelProvider)).put(LazyClassKeyProvider.com_andriod_reader_ui_list_NoteListViewModel, ((Provider) noteListViewModelProvider)).put(LazyClassKeyProvider.com_andriod_reader_ui_reader_ReaderViewModel, ((Provider) readerViewModelProvider)).put(LazyClassKeyProvider.com_andriod_reader_ui_settings_SettingsViewModel, ((Provider) settingsViewModelProvider)).build());
     }
 
     @Override
@@ -472,6 +482,8 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
 
       static String com_andriod_reader_ui_list_NoteListViewModel = "com.andriod.reader.ui.list.NoteListViewModel";
 
+      static String com_andriod_reader_ui_reader_ReaderViewModel = "com.andriod.reader.ui.reader.ReaderViewModel";
+
       @KeepFieldType
       EditorViewModel com_andriod_reader_ui_editor_EditorViewModel2;
 
@@ -480,6 +492,9 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
 
       @KeepFieldType
       NoteListViewModel com_andriod_reader_ui_list_NoteListViewModel2;
+
+      @KeepFieldType
+      ReaderViewModel com_andriod_reader_ui_reader_ReaderViewModel2;
     }
 
     private static final class SwitchingProvider<T> implements Provider<T> {
@@ -509,7 +524,10 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
           case 1: // com.andriod.reader.ui.list.NoteListViewModel 
           return (T) new NoteListViewModel(singletonCImpl.noteRepositoryProvider.get(), singletonCImpl.syncRepositoryProvider.get());
 
-          case 2: // com.andriod.reader.ui.settings.SettingsViewModel 
+          case 2: // com.andriod.reader.ui.reader.ReaderViewModel 
+          return (T) new ReaderViewModel(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), viewModelCImpl.savedStateHandle, singletonCImpl.noteRepositoryProvider.get(), singletonCImpl.settingsStoreProvider.get());
+
+          case 3: // com.andriod.reader.ui.settings.SettingsViewModel 
           return (T) new SettingsViewModel(ApplicationContextModule_ProvideContextFactory.provideContext(singletonCImpl.applicationContextModule), singletonCImpl.settingsStoreProvider.get(), singletonCImpl.syncRepositoryProvider.get());
 
           default: throw new AssertionError(id);
@@ -633,11 +651,6 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
     @Override
     public SettingsStore settingsStore() {
       return settingsStoreProvider.get();
-    }
-
-    @Override
-    public NoteRepository noteRepository() {
-      return noteRepositoryProvider.get();
     }
 
     @Override

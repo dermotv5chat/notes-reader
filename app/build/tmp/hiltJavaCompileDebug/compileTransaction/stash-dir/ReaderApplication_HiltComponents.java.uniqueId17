@@ -1,6 +1,7 @@
 package com.andriod.reader;
 
 import com.andriod.reader.di.AppModule;
+import com.andriod.reader.service.TtsServiceEntryPoint;
 import com.andriod.reader.ui.editor.EditorViewModel_HiltModules;
 import com.andriod.reader.ui.list.NoteListViewModel_HiltModules;
 import com.andriod.reader.ui.reader.ReaderEntryPoint;
@@ -138,6 +139,7 @@ public final class ReaderApplication_HiltComponents {
   )
   @Singleton
   public abstract static class SingletonC implements ReaderApplication_GeneratedInjector,
+      TtsServiceEntryPoint,
       ReaderEntryPoint,
       FragmentGetContextFix.FragmentGetContextFixEntryPoint,
       HiltWrapper_ActivityRetainedComponentManager_ActivityRetainedComponentBuilderEntryPoint,

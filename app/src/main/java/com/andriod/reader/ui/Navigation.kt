@@ -118,7 +118,6 @@ fun ReaderApp() {
             composable("reader/{fileName}") { entry ->
                 val fileName = entry.arguments?.getString("fileName") ?: return@composable
                 ReaderScreen(
-                    fileName = fileName,
                     onBack = { navController.popBackStack() },
                 )
             }
