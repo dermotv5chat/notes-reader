@@ -178,10 +178,8 @@ fun ReaderScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
-            Text(
+            MarkdownContent(
                 text = uiState.note?.content ?: "笔记不存在",
-                style = MaterialTheme.typography.bodyLarge,
-                lineHeight = MaterialTheme.typography.bodyLarge.lineHeight * 1.4f,
             )
         }
     }

@@ -5,8 +5,12 @@
 ## 功能
 
 - 离线新建、编辑、删除笔记（本地 `notes/*.md`）
+- iOS 风格编辑：自动保存、格式工具栏、撤销/重做
+- 阅读页 Markdown 渲染；朗读前自动剥离格式符号
 - 手动上传/下载到 GitHub 仓库 [dermotv5chat/notes](https://github.com/dermotv5chat/notes)
-- TTS 朗读笔记，支持语速调节、分段播放
+- TTS 朗读笔记：语音选择、语速调节、分段播放
+
+详见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 开发环境
 

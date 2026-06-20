@@ -73,4 +73,6 @@ dependencies {
     implementation(libs.media)
     implementation(libs.coroutines.android)
     testImplementation(libs.junit)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation("androidx.compose.ui:ui-text")
 }

@@ -1,5 +1,6 @@
 package com.andriod.reader.ui
 
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -77,10 +78,17 @@ fun ReaderApp() {
             }
         },
     ) { padding ->
+        val isEditor = currentRoute?.startsWith("editor") == true
+        val navPadding = if (isEditor) {
+            PaddingValues()
+        } else {
+            padding
+        }
+
         NavHost(
             navController = navController,
             startDestination = Routes.NOTES,
-            modifier = Modifier.padding(padding),
+            modifier = Modifier.padding(navPadding),
         ) {
             composable(Routes.NOTES) {
                 NoteListScreen(
@@ -92,27 +100,14 @@ fun ReaderApp() {
             composable(Routes.SETTINGS) {
                 SettingsScreen()
             }
-            composable("editor?fileName={fileName}") { entry ->
-                val fileName = entry.arguments?.getString("fileName")
+            composable("editor?fileName={fileName}") {
                 EditorScreen(
-                    fileName = fileName,
-                    onDone = { saved ->
-                        navController.popBackStack()
-                        if (saved != null) {
-                            navController.navigate(Routes.reader(saved))
-                        }
-                    },
+                    onDone = { navController.popBackStack() },
                 )
             }
             composable("editor") {
                 EditorScreen(
-                    fileName = null,
-                    onDone = { saved ->
-                        navController.popBackStack()
-                        if (saved != null) {
-                            navController.navigate(Routes.reader(saved))
-                        }
-                    },
+                    onDone = { navController.popBackStack() },
                 )
             }
             composable("reader/{fileName}") { entry ->

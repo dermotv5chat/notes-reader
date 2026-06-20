@@ -6,6 +6,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
+val NoteEditorBackground = Color(0xFFFFF9E8)
+
 private val LightColors = lightColorScheme(
     primary = Color(0xFF1565C0),
     secondary = Color(0xFF455A64),

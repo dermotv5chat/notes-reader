@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.media.session.MediaButtonReceiver
 import com.andriod.reader.MainActivity
 import com.andriod.reader.R
+import com.andriod.reader.data.local.MarkdownPlainText
 import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
@@ -171,7 +172,7 @@ class TtsController(
     fun start(text: String) {
         init()
         segments.clear()
-        segments.addAll(splitSegments(text))
+        segments.addAll(splitSegments(MarkdownPlainText.stripForSpeech(text)))
         currentIndex = 0
         isPlaying.set(true)
         isPaused.set(false)

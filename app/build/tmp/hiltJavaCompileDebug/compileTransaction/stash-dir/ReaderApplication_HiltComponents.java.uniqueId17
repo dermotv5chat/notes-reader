@@ -4,7 +4,7 @@ import com.andriod.reader.di.AppModule;
 import com.andriod.reader.service.TtsServiceEntryPoint;
 import com.andriod.reader.ui.editor.EditorViewModel_HiltModules;
 import com.andriod.reader.ui.list.NoteListViewModel_HiltModules;
-import com.andriod.reader.ui.reader.ReaderEntryPoint;
+import com.andriod.reader.ui.reader.ReaderViewModel_HiltModules;
 import com.andriod.reader.ui.settings.SettingsViewModel_HiltModules;
 import dagger.Binds;
 import dagger.Component;
@@ -140,7 +140,6 @@ public final class ReaderApplication_HiltComponents {
   @Singleton
   public abstract static class SingletonC implements ReaderApplication_GeneratedInjector,
       TtsServiceEntryPoint,
-      ReaderEntryPoint,
       FragmentGetContextFix.FragmentGetContextFixEntryPoint,
       HiltWrapper_ActivityRetainedComponentManager_ActivityRetainedComponentBuilderEntryPoint,
       ServiceComponentManager.ServiceComponentBuilderEntryPoint,
@@ -165,6 +164,7 @@ public final class ReaderApplication_HiltComponents {
           NoteListViewModel_HiltModules.KeyModule.class,
           ActivityCBuilderModule.class,
           ViewModelCBuilderModule.class,
+          ReaderViewModel_HiltModules.KeyModule.class,
           SettingsViewModel_HiltModules.KeyModule.class
       }
   )
@@ -204,6 +204,7 @@ public final class ReaderApplication_HiltComponents {
           EditorViewModel_HiltModules.BindsModule.class,
           HiltWrapper_HiltViewModelFactory_ViewModelModule.class,
           NoteListViewModel_HiltModules.BindsModule.class,
+          ReaderViewModel_HiltModules.BindsModule.class,
           SettingsViewModel_HiltModules.BindsModule.class
       }
   )
