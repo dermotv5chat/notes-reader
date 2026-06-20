@@ -29,6 +29,7 @@ class SyncStateStore @Inject constructor(
         return dtoMap.mapValues { (_, dto) ->
             SyncFileState(
                 githubSha = dto.githubSha,
+                remotePath = dto.remotePath,
                 syncStatus = runCatching { SyncStatus.valueOf(dto.syncStatus) }
                     .getOrDefault(SyncStatus.LOCAL_ONLY),
                 pendingDelete = dto.pendingDelete,
@@ -40,6 +41,7 @@ class SyncStateStore @Inject constructor(
         val dtoMap = states.mapValues { (_, state) ->
             SyncFileStateDto(
                 githubSha = state.githubSha,
+                remotePath = state.remotePath,
                 syncStatus = state.syncStatus.name,
                 pendingDelete = state.pendingDelete,
             )
@@ -49,6 +51,7 @@ class SyncStateStore @Inject constructor(
 
     private data class SyncFileStateDto(
         val githubSha: String? = null,
+        val remotePath: String? = null,
         val syncStatus: String = SyncStatus.LOCAL_ONLY.name,
         val pendingDelete: Boolean = false,
     )

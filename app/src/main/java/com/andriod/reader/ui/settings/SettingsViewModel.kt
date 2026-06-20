@@ -23,7 +23,6 @@ data class SettingsUiState(
     val token: String = "",
     val owner: String = "dermotv5chat",
     val repo: String = "notes",
-    val notesPath: String = "notes",
     val speechRate: Float = 1.0f,
     val speechPitch: Float = 1.0f,
     val keepScreenOn: Boolean = false,
@@ -63,7 +62,6 @@ class SettingsViewModel @Inject constructor(
             token = settingsStore.getToken() ?: "",
             owner = gh.owner,
             repo = gh.repo,
-            notesPath = gh.notesPath,
             speechRate = settingsStore.getDefaultSpeechRate(),
             speechPitch = settingsStore.getDefaultSpeechPitch(),
             keepScreenOn = settingsStore.isKeepScreenOn(),
@@ -75,7 +73,6 @@ class SettingsViewModel @Inject constructor(
     fun onTokenChange(value: String) = _uiState.update { it.copy(token = value, saved = false) }
     fun onOwnerChange(value: String) = _uiState.update { it.copy(owner = value, saved = false) }
     fun onRepoChange(value: String) = _uiState.update { it.copy(repo = value, saved = false) }
-    fun onNotesPathChange(value: String) = _uiState.update { it.copy(notesPath = value, saved = false) }
     fun onSpeechRateChange(value: Float) = _uiState.update { it.copy(speechRate = value, saved = false) }
     fun onSpeechPitchChange(value: Float) = _uiState.update { it.copy(speechPitch = value, saved = false) }
     fun onKeepScreenOnChange(value: Boolean) = _uiState.update { it.copy(keepScreenOn = value, saved = false) }
@@ -116,7 +113,7 @@ class SettingsViewModel @Inject constructor(
             settingsStore.saveToken(state.token)
         }
         settingsStore.saveGitHubSettings(
-            GitHubSettings(state.owner, state.repo, state.notesPath),
+            GitHubSettings(state.owner, state.repo),
         )
         settingsStore.saveDefaultSpeechRate(state.speechRate)
         settingsStore.saveDefaultSpeechPitch(state.speechPitch)

@@ -19,6 +19,7 @@ enum class SyncStatus {
 
 data class SyncFileState(
     val githubSha: String? = null,
+    val remotePath: String? = null,
     val syncStatus: SyncStatus = SyncStatus.LOCAL_ONLY,
     val pendingDelete: Boolean = false,
 )
@@ -26,7 +27,6 @@ data class SyncFileState(
 data class GitHubSettings(
     val owner: String = "dermotv5chat",
     val repo: String = "notes",
-    val notesPath: String = "notes",
 )
 
 sealed class SyncResult {

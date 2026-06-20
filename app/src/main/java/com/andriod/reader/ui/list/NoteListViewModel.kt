@@ -19,6 +19,7 @@ import javax.inject.Inject
 
 data class NoteListUiState(
     val notes: List<Note> = emptyList(),
+    val currentFolder: String = "",
     val query: String = "",
     val isSyncing: Boolean = false,
     val message: String? = null,
@@ -48,7 +49,27 @@ class NoteListViewModel @Inject constructor(
 
     fun onQueryChange(query: String) {
         _uiState.update {
-            it.copy(query = query, notes = noteRepository.listNotes(query))
+            it.copy(
+                query = query,
+                notes = noteRepository.listNotes(query),
+                currentFolder = if (query.isBlank()) it.currentFolder else "",
+            )
+        }
+    }
+
+    fun openFolder(path: String) {
+        _uiState.update {
+            it.copy(
+                currentFolder = path,
+                query = "",
+                notes = noteRepository.listNotes(""),
+            )
+        }
+    }
+
+    fun navigateUp() {
+        _uiState.update {
+            it.copy(currentFolder = NoteTreeBrowser.parentFolder(it.currentFolder))
         }
     }
 

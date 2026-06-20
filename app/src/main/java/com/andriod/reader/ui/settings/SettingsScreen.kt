@@ -92,13 +92,9 @@ fun SettingsScreen(
                 label = { Text("仓库名") },
                 singleLine = true,
             )
-            OutlinedTextField(
-                value = uiState.notesPath,
-                onValueChange = viewModel::onNotesPathChange,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                label = { Text("笔记目录路径") },
-                placeholder = { Text("留空=仓库根目录，或填 notes") },
-                singleLine = true,
+            Text(
+                "整个仓库均为笔记，同步会递归扫描所有子目录中的 .md 文件，并与手机本地目录结构保持一致。",
+                modifier = Modifier.padding(top = 8.dp),
             )
             Text(
                 "Fine-grained Token 须授权此仓库并开启 Contents 读写；Classic Token 须勾选 repo 权限。",

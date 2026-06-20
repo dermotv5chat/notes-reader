@@ -48,7 +48,7 @@
 #### 工程与文档
 - Kotlin + Jetpack Compose + Material 3 + Hilt 项目骨架
 - 单元测试：`MarkdownParser`、`MarkdownEditorActions`、`MarkdownPlainText`、`MarkdownDisplay`、`EditorUndoHistory`
-- 技术文档：[`docs/editor-keyboard-toolbar-layout.md`](docs/editor-keyboard-toolbar-layout.md)
+- 技术文档：[`docs/editor-keyboard-toolbar-layout.md`](docs/editor-keyboard-toolbar-layout.md)、[`docs/install-to-device.md`](docs/install-to-device.md)
 
 ### Changed
 - 编辑完成返回列表，不再自动跳转朗读页

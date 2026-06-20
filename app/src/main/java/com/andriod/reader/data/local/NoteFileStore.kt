@@ -18,20 +18,18 @@ class NoteFileStore @Inject constructor(
         get() = File(context.filesDir, "notes").also { it.mkdirs() }
 
     fun listNotes(): List<Note> {
-        val files = notesDir.listFiles { file -> file.isFile && file.name.endsWith(".md") }
-            ?.sortedByDescending { it.lastModified() }
-            ?: emptyList()
-
+        val files = listMarkdownFiles().sortedByDescending { it.lastModified() }
         val syncStates = syncStateStore.readAll()
 
         return files.map { file ->
-            val parsed = MarkdownParser.parse(file.name, file.readText())
-            val state = syncStates[file.name]
+            val relativePath = toRelativePath(file)
+            val parsed = MarkdownParser.parse(relativePath, file.readText())
+            val state = syncStates[relativePath]
             Note(
                 id = parsed.id,
                 title = parsed.title,
                 content = parsed.content,
-                fileName = file.name,
+                fileName = relativePath,
                 updatedAt = parsed.updatedAt,
                 syncStatus = state?.syncStatus ?: SyncStatus.LOCAL_ONLY,
             )
@@ -39,7 +37,7 @@ class NoteFileStore @Inject constructor(
     }
 
     fun getNote(fileName: String): Note? {
-        val file = File(notesDir, fileName)
+        val file = resolveFile(fileName)
         if (!file.exists()) return null
         val parsed = MarkdownParser.parse(fileName, file.readText())
         val state = syncStateStore.readAll()[fileName]
@@ -54,8 +52,9 @@ class NoteFileStore @Inject constructor(
     }
 
     fun saveNote(note: Note): Note {
-        val file = File(notesDir, note.fileName)
+        val file = resolveFile(note.fileName)
         val updated = note.copy(updatedAt = Instant.now())
+        file.parentFile?.mkdirs()
         file.writeText(MarkdownParser.serialize(updated))
 
         val states = syncStateStore.readAll().toMutableMap()
@@ -82,7 +81,7 @@ class NoteFileStore @Inject constructor(
             updatedAt = Instant.now(),
             syncStatus = SyncStatus.LOCAL_ONLY,
         )
-        File(notesDir, fileName).writeText(MarkdownParser.serialize(note))
+        resolveFile(fileName).writeText(MarkdownParser.serialize(note))
         val states = syncStateStore.readAll().toMutableMap()
         states[fileName] = com.andriod.reader.domain.SyncFileState(syncStatus = SyncStatus.LOCAL_ONLY)
         syncStateStore.writeAll(states)
@@ -98,22 +97,64 @@ class NoteFileStore @Inject constructor(
         } else {
             states.remove(fileName)
             syncStateStore.writeAll(states)
-            File(notesDir, fileName).delete()
+            resolveFile(fileName).delete()
+            cleanupEmptyParents(resolveFile(fileName).parentFile)
         }
     }
 
     fun writeRawFile(fileName: String, rawContent: String) {
-        File(notesDir, fileName).writeText(rawContent)
+        val file = resolveFile(fileName)
+        file.parentFile?.mkdirs()
+        file.writeText(rawContent)
     }
 
     fun readRawFile(fileName: String): String? {
-        val file = File(notesDir, fileName)
+        val file = resolveFile(fileName)
         return if (file.exists()) file.readText() else null
     }
 
     fun deleteLocalFile(fileName: String) {
-        File(notesDir, fileName).delete()
+        val file = resolveFile(fileName)
+        file.delete()
+        cleanupEmptyParents(file.parentFile)
     }
 
     fun notesDirectory(): File = notesDir
+
+    private fun listMarkdownFiles(): List<File> {
+        val results = mutableListOf<File>()
+        fun walk(dir: File) {
+            dir.listFiles()?.forEach { file ->
+                when {
+                    file.isFile && file.name.endsWith(".md", ignoreCase = true) -> results.add(file)
+                    file.isDirectory -> walk(file)
+                }
+            }
+        }
+        walk(notesDir)
+        return results
+    }
+
+    private fun resolveFile(relativePath: String): File {
+        val normalized = relativePath.replace('\\', '/').trimStart('/')
+        val file = File(notesDir, normalized)
+        val notesCanonical = notesDir.canonicalFile
+        val targetCanonical = file.canonicalFile
+        require(
+            targetCanonical.path == notesCanonical.path ||
+                targetCanonical.path.startsWith(notesCanonical.path + File.separator),
+        ) { "Invalid note path: $relativePath" }
+        return file
+    }
+
+    private fun toRelativePath(file: File): String =
+        file.relativeTo(notesDir).path.replace('\\', '/')
+
+    private fun cleanupEmptyParents(dir: File?) {
+        var current = dir ?: return
+        while (current.path != notesDir.path && current.exists() && current.listFiles()?.isEmpty() == true) {
+            current.delete()
+            current = current.parentFile ?: break
+        }
+    }
 }

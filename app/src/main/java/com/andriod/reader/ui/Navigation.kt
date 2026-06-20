@@ -1,5 +1,6 @@
 package com.andriod.reader.ui
 
+import android.net.Uri
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -30,9 +31,13 @@ object Routes {
     const val READER = "reader/{fileName}"
 
     fun editor(fileName: String? = null): String =
-        if (fileName == null) "editor" else "editor?fileName=$fileName"
+        if (fileName == null) {
+            "editor"
+        } else {
+            "editor?fileName=${Uri.encode(fileName)}"
+        }
 
-    fun reader(fileName: String): String = "reader/$fileName"
+    fun reader(fileName: String): String = "reader/${Uri.encode(fileName)}"
 }
 
 @Composable
@@ -111,7 +116,8 @@ fun ReaderApp() {
                 )
             }
             composable("reader/{fileName}") { entry ->
-                val fileName = entry.arguments?.getString("fileName") ?: return@composable
+                val encoded = entry.arguments?.getString("fileName") ?: return@composable
+                val fileName = Uri.decode(encoded)
                 ReaderScreen(
                     onBack = { navController.popBackStack() },
                 )

@@ -18,10 +18,11 @@ object MarkdownParser {
     )
 
     fun parse(fileName: String, raw: String): ParsedNote {
+        val baseName = fileName.substringAfterLast('/').removeSuffix(".md")
         if (!raw.startsWith("---")) {
             return ParsedNote(
-                id = fileName.removeSuffix(".md"),
-                title = fileName.removeSuffix(".md"),
+                id = baseName,
+                title = baseName,
                 content = raw.trim(),
                 updatedAt = Instant.now(),
             )
@@ -30,8 +31,8 @@ object MarkdownParser {
         val end = raw.indexOf("\n---", 3)
         if (end < 0) {
             return ParsedNote(
-                id = fileName.removeSuffix(".md"),
-                title = fileName.removeSuffix(".md"),
+                id = baseName,
+                title = baseName,
                 content = raw.trim(),
                 updatedAt = Instant.now(),
             )
@@ -42,8 +43,8 @@ object MarkdownParser {
         val fields = parseFrontMatter(frontMatter)
 
         return ParsedNote(
-            id = fields["id"] ?: fileName.removeSuffix(".md"),
-            title = fields["title"] ?: fileName.removeSuffix(".md"),
+            id = fields["id"] ?: baseName,
+            title = fields["title"] ?: baseName,
             content = body,
             updatedAt = fields["updatedAt"]?.let { runCatching { Instant.parse(it) }.getOrNull() }
                 ?: Instant.now(),

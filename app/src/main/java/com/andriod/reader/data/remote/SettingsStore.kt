@@ -33,14 +33,12 @@ class SettingsStore @Inject constructor(
     fun getGitHubSettings(): GitHubSettings = GitHubSettings(
         owner = prefs.getString(KEY_OWNER, "dermotv5chat") ?: "dermotv5chat",
         repo = prefs.getString(KEY_REPO, "notes") ?: "notes",
-        notesPath = prefs.getString(KEY_NOTES_PATH, "notes") ?: "notes",
     )
 
     fun saveGitHubSettings(settings: GitHubSettings) {
         prefs.edit()
             .putString(KEY_OWNER, settings.owner)
             .putString(KEY_REPO, settings.repo)
-            .putString(KEY_NOTES_PATH, settings.notesPath)
             .apply()
     }
 
@@ -78,7 +76,6 @@ class SettingsStore @Inject constructor(
         private const val KEY_TOKEN = "github_token"
         private const val KEY_OWNER = "github_owner"
         private const val KEY_REPO = "github_repo"
-        private const val KEY_NOTES_PATH = "github_notes_path"
         private const val KEY_SPEECH_RATE = "speech_rate"
         private const val KEY_SPEECH_PITCH = "speech_pitch"
         private const val KEY_SELECTED_VOICE = "selected_voice_id"

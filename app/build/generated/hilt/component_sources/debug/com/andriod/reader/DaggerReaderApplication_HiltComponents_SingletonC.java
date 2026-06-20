@@ -406,22 +406,22 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
 
     @IdentifierNameString
     private static final class LazyClassKeyProvider {
-      static String com_andriod_reader_ui_settings_SettingsViewModel = "com.andriod.reader.ui.settings.SettingsViewModel";
+      static String com_andriod_reader_ui_editor_EditorViewModel = "com.andriod.reader.ui.editor.EditorViewModel";
 
       static String com_andriod_reader_ui_reader_ReaderViewModel = "com.andriod.reader.ui.reader.ReaderViewModel";
 
-      static String com_andriod_reader_ui_editor_EditorViewModel = "com.andriod.reader.ui.editor.EditorViewModel";
+      static String com_andriod_reader_ui_settings_SettingsViewModel = "com.andriod.reader.ui.settings.SettingsViewModel";
 
       static String com_andriod_reader_ui_list_NoteListViewModel = "com.andriod.reader.ui.list.NoteListViewModel";
 
       @KeepFieldType
-      SettingsViewModel com_andriod_reader_ui_settings_SettingsViewModel2;
+      EditorViewModel com_andriod_reader_ui_editor_EditorViewModel2;
 
       @KeepFieldType
       ReaderViewModel com_andriod_reader_ui_reader_ReaderViewModel2;
 
       @KeepFieldType
-      EditorViewModel com_andriod_reader_ui_editor_EditorViewModel2;
+      SettingsViewModel com_andriod_reader_ui_settings_SettingsViewModel2;
 
       @KeepFieldType
       NoteListViewModel com_andriod_reader_ui_list_NoteListViewModel2;
@@ -478,9 +478,9 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
     private static final class LazyClassKeyProvider {
       static String com_andriod_reader_ui_settings_SettingsViewModel = "com.andriod.reader.ui.settings.SettingsViewModel";
 
-      static String com_andriod_reader_ui_editor_EditorViewModel = "com.andriod.reader.ui.editor.EditorViewModel";
-
       static String com_andriod_reader_ui_list_NoteListViewModel = "com.andriod.reader.ui.list.NoteListViewModel";
+
+      static String com_andriod_reader_ui_editor_EditorViewModel = "com.andriod.reader.ui.editor.EditorViewModel";
 
       static String com_andriod_reader_ui_reader_ReaderViewModel = "com.andriod.reader.ui.reader.ReaderViewModel";
 
@@ -488,10 +488,10 @@ public final class DaggerReaderApplication_HiltComponents_SingletonC {
       SettingsViewModel com_andriod_reader_ui_settings_SettingsViewModel2;
 
       @KeepFieldType
-      EditorViewModel com_andriod_reader_ui_editor_EditorViewModel2;
+      NoteListViewModel com_andriod_reader_ui_list_NoteListViewModel2;
 
       @KeepFieldType
-      NoteListViewModel com_andriod_reader_ui_list_NoteListViewModel2;
+      EditorViewModel com_andriod_reader_ui_editor_EditorViewModel2;
 
       @KeepFieldType
       ReaderViewModel com_andriod_reader_ui_reader_ReaderViewModel2;

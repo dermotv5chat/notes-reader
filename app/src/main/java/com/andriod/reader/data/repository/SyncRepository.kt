@@ -40,10 +40,10 @@ class SyncRepository @Inject constructor(
 
         try {
             val repo = gitHubApi.getRepo(settings.owner, settings.repo, auth)
-            val (path, items) = resolveRemoteMarkdownItems(settings, auth)
+            val items = resolveRemoteMarkdownItems(settings, auth)
             ConnectionTestResult.Success(
                 "连接成功：${repo.fullName}\n" +
-                    "笔记目录：${path.ifBlank { "仓库根目录" }}，发现 ${items.size} 个 .md 文件",
+                    "扫描整个仓库，发现 ${items.size} 个 .md 文件（含子目录）",
             )
         } catch (e: HttpException) {
             ConnectionTestResult.Error(parseHttpError(e, settings))
@@ -63,12 +63,11 @@ class SyncRepository @Inject constructor(
 
         try {
             gitHubApi.getRepo(settings.owner, settings.repo, auth)
-            val effectivePath = resolveNotesPath(settings, auth)
 
             states.filter { (_, state) ->
                 state.pendingDelete || state.syncStatus == SyncStatus.PENDING || state.syncStatus == SyncStatus.LOCAL_ONLY
-            }.forEach { (fileName, state) ->
-                val remotePath = remoteFilePath(effectivePath, fileName)
+            }.forEach { (localPath, state) ->
+                val remotePath = state.remotePath ?: SyncPathUtils.normalize(localPath)
                 if (state.pendingDelete) {
                     val sha = state.githubSha
                     if (sha != null) {
@@ -77,15 +76,15 @@ class SyncRepository @Inject constructor(
                             repo = settings.repo,
                             path = remotePath,
                             authorization = auth,
-                            message = "Delete note $fileName",
+                            message = "Delete note $localPath",
                             sha = sha,
                         )
-                        noteFileStore.deleteLocalFile(fileName)
-                        states.remove(fileName)
+                        noteFileStore.deleteLocalFile(localPath)
+                        states.remove(localPath)
                         deleted++
                     }
                 } else {
-                    val raw = noteFileStore.readRawFile(fileName) ?: return@forEach
+                    val raw = noteFileStore.readRawFile(localPath) ?: return@forEach
                     val encoded = Base64.encodeToString(raw.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
                     val response = gitHubApi.putContent(
                         owner = settings.owner,
@@ -93,13 +92,14 @@ class SyncRepository @Inject constructor(
                         path = remotePath,
                         authorization = auth,
                         body = GitHubPutRequest(
-                            message = "Update note $fileName",
+                            message = "Update note $localPath",
                             content = encoded,
                             sha = state.githubSha,
                         ),
                     )
-                    states[fileName] = SyncFileState(
+                    states[localPath] = SyncFileState(
                         githubSha = response.content?.sha,
+                        remotePath = remotePath,
                         syncStatus = SyncStatus.SYNCED,
                         pendingDelete = false,
                     )
@@ -126,17 +126,16 @@ class SyncRepository @Inject constructor(
 
         try {
             gitHubApi.getRepo(settings.owner, settings.repo, auth)
-            val (_, remoteItems) = resolveRemoteMarkdownItems(settings, auth)
+            val remoteItems = resolveRemoteMarkdownItems(settings, auth)
 
             if (remoteItems.isEmpty()) {
-                return@withContext SyncResult.Error(
-                    "远程没有找到 .md 笔记文件。请检查「笔记目录路径」是否正确（可尝试留空表示仓库根目录）。",
-                )
+                return@withContext SyncResult.Error("仓库中没有找到 .md 笔记文件。")
             }
 
             val states = syncStateStore.readAll().toMutableMap()
 
             remoteItems.forEach { item ->
+                val localPath = SyncPathUtils.normalize(item.path)
                 val response = gitHubApi.getContents(
                     owner = settings.owner,
                     repo = settings.repo,
@@ -144,30 +143,32 @@ class SyncRepository @Inject constructor(
                     authorization = auth,
                 )
                 val remoteRaw = decodeContent(response.content)
-                val remoteParsed = MarkdownParser.parse(item.name, remoteRaw)
-                val localRaw = noteFileStore.readRawFile(item.name)
-                val localState = states[item.name]
+                val remoteParsed = MarkdownParser.parse(localPath, remoteRaw)
+                val localRaw = noteFileStore.readRawFile(localPath)
+                val localState = states[localPath]
 
                 if (localRaw != null && localState?.syncStatus == SyncStatus.PENDING) {
-                    val localParsed = MarkdownParser.parse(item.name, localRaw)
+                    val localParsed = MarkdownParser.parse(localPath, localRaw)
                     if (remoteParsed.updatedAt.isAfter(localParsed.updatedAt)) {
                         when (val action = conflictResolver(
-                            SyncConflict(item.name, localParsed.updatedAt, remoteParsed.updatedAt),
+                            SyncConflict(localPath, localParsed.updatedAt, remoteParsed.updatedAt),
                         )) {
                             ConflictAction.KeepLocal -> return@forEach
                             ConflictAction.KeepRemote -> {
-                                noteFileStore.writeRawFile(item.name, remoteRaw)
-                                states[item.name] = SyncFileState(
+                                noteFileStore.writeRawFile(localPath, remoteRaw)
+                                states[localPath] = SyncFileState(
                                     githubSha = response.sha,
+                                    remotePath = item.path,
                                     syncStatus = SyncStatus.SYNCED,
                                 )
                                 downloaded++
                             }
                             is ConflictAction.SaveCopy -> {
                                 noteFileStore.writeRawFile(action.newFileName, localRaw)
-                                noteFileStore.writeRawFile(item.name, remoteRaw)
-                                states[item.name] = SyncFileState(
+                                noteFileStore.writeRawFile(localPath, remoteRaw)
+                                states[localPath] = SyncFileState(
                                     githubSha = response.sha,
+                                    remotePath = item.path,
                                     syncStatus = SyncStatus.SYNCED,
                                 )
                                 downloaded++
@@ -175,9 +176,10 @@ class SyncRepository @Inject constructor(
                         }
                     }
                 } else {
-                    noteFileStore.writeRawFile(item.name, remoteRaw)
-                    states[item.name] = SyncFileState(
+                    noteFileStore.writeRawFile(localPath, remoteRaw)
+                    states[localPath] = SyncFileState(
                         githubSha = response.sha,
+                        remotePath = item.path,
                         syncStatus = SyncStatus.SYNCED,
                     )
                     downloaded++
@@ -196,51 +198,47 @@ class SyncRepository @Inject constructor(
     private suspend fun resolveRemoteMarkdownItems(
         settings: GitHubSettings,
         auth: String,
-    ): Pair<String, List<GitHubContentItem>> {
-        val configured = settings.notesPath.trim()
-        if (configured.isNotEmpty()) {
-            val items = listMarkdownAt(settings, configured, auth)
-            if (items.isNotEmpty()) return configured to items
-        }
-        val rootItems = listMarkdownAt(settings, "", auth)
-        if (rootItems.isNotEmpty()) return "" to rootItems
-        if (configured.isNotEmpty()) {
-            return configured to emptyList()
-        }
-        return "" to emptyList()
+    ): List<GitHubContentItem> = listMarkdownRecursive(settings, "", auth)
+
+    private suspend fun listMarkdownRecursive(
+        settings: GitHubSettings,
+        path: String,
+        auth: String,
+    ): List<GitHubContentItem> {
+        val results = mutableListOf<GitHubContentItem>()
+        collectMarkdown(settings, path, auth, results)
+        return results.sortedBy { it.path }
     }
 
-    private suspend fun resolveNotesPath(settings: GitHubSettings, auth: String): String {
-        val configured = settings.notesPath.trim()
-        if (configured.isNotEmpty() && listMarkdownAt(settings, configured, auth).isNotEmpty()) {
-            return configured
+    private suspend fun collectMarkdown(
+        settings: GitHubSettings,
+        path: String,
+        auth: String,
+        results: MutableList<GitHubContentItem>,
+    ) {
+        val items = listContentsAt(settings, path, auth)
+        for (item in items) {
+            when {
+                item.type == "file" && item.name.endsWith(".md", ignoreCase = true) -> results.add(item)
+                item.type == "dir" -> collectMarkdown(settings, item.path, auth, results)
+            }
         }
-        if (listMarkdownAt(settings, "", auth).isNotEmpty()) {
-            return ""
-        }
-        return configured
     }
 
-    private suspend fun listMarkdownAt(
+    private suspend fun listContentsAt(
         settings: GitHubSettings,
         path: String,
         auth: String,
     ): List<GitHubContentItem> {
         return try {
-            val items = if (path.isBlank()) {
+            if (path.isBlank()) {
                 gitHubApi.listRootContents(settings.owner, settings.repo, auth)
             } else {
                 gitHubApi.listContents(settings.owner, settings.repo, path, auth)
             }
-            items.filter { it.type == "file" && it.name.endsWith(".md", ignoreCase = true) }
         } catch (e: HttpException) {
             if (e.code() == 404) emptyList() else throw e
         }
-    }
-
-    private fun remoteFilePath(notesPath: String, fileName: String): String {
-        val path = notesPath.trim()
-        return if (path.isEmpty()) fileName else "$path/$fileName"
     }
 
     private fun authHeader(token: String): String = "Bearer ${token.trim()}"
