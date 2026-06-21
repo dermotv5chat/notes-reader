@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andriod.reader.service.TtsHelperEngineOrderTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-06-21T07:54:43" hostname="WILL-WIN" time="0.006">
+<testsuite name="com.andriod.reader.service.TtsHelperEngineOrderTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-06-21T08:05:06" hostname="WILL-WIN" time="0.005">
   <properties/>
-  <testcase name="engineTryOrder_usesSystemPickerWhenNothingInstalled" classname="com.andriod.reader.service.TtsHelperEngineOrderTest" time="0.006"/>
+  <testcase name="engineTryOrder_usesSystemPickerWhenNothingInstalled" classname="com.andriod.reader.service.TtsHelperEngineOrderTest" time="0.005"/>
   <testcase name="engineTryOrder_prefersSystemDefaultBeforeGoogle" classname="com.andriod.reader.service.TtsHelperEngineOrderTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>

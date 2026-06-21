@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andriod.reader.service.TtsPlaybackEndActionTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-06-21T07:54:43" hostname="WILL-WIN" time="0.002">
+<testsuite name="com.andriod.reader.service.TtsPlaybackEndActionTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-06-21T08:05:06" hostname="WILL-WIN" time="0.007">
   <properties/>
-  <testcase name="shouldStopAfterLastSegment_whenAfterNoteEndMode" classname="com.andriod.reader.service.TtsPlaybackEndActionTest" time="0.001"/>
+  <testcase name="shouldStopAfterLastSegment_whenAfterNoteEndMode" classname="com.andriod.reader.service.TtsPlaybackEndActionTest" time="0.006"/>
   <testcase name="shouldStopAfterLastSegment_whenSleepTimerAfterNoteEnd" classname="com.andriod.reader.service.TtsPlaybackEndActionTest" time="0.0"/>
-  <testcase name="shouldNotContinueForFixedTimerRemaining_whenAfterNoteEnd" classname="com.andriod.reader.service.TtsPlaybackEndActionTest" time="0.0"/>
+  <testcase name="shouldNotContinueForFixedTimerRemaining_whenAfterNoteEnd" classname="com.andriod.reader.service.TtsPlaybackEndActionTest" time="0.001"/>
   <testcase name="shouldRestartAfterLastSegment_whenLoopEnabled" classname="com.andriod.reader.service.TtsPlaybackEndActionTest" time="0.0"/>
   <testcase name="shouldContinueAfterLastSegment_whenFixedTimerLongerThanNoteWithoutLoop" classname="com.andriod.reader.service.TtsPlaybackEndActionTest" time="0.0"/>
   <testcase name="shouldRestartAfterLastSegment_whenFixedSleepTimerActiveAndLoopEnabled" classname="com.andriod.reader.service.TtsPlaybackEndActionTest" time="0.0"/>
