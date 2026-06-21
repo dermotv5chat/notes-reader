@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andriod.reader.data.local.MarkdownParserTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-06-20T12:57:41" hostname="WILL-WIN" time="0.041">
+<testsuite name="com.andriod.reader.data.local.MarkdownParserTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-06-21T07:54:43" hostname="WILL-WIN" time="0.032">
   <properties/>
-  <testcase name="serialize_roundTrip" classname="com.andriod.reader.data.local.MarkdownParserTest" time="0.04"/>
-  <testcase name="parse_withFrontMatter" classname="com.andriod.reader.data.local.MarkdownParserTest" time="0.001"/>
+  <testcase name="serialize_roundTrip" classname="com.andriod.reader.data.local.MarkdownParserTest" time="0.031"/>
+  <testcase name="parse_withFrontMatter" classname="com.andriod.reader.data.local.MarkdownParserTest" time="0.0"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

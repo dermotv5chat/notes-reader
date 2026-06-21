@@ -1,0 +1,14 @@
+---
+description: 每次代码改动后补充测试并跑全量测试
+alwaysApply: true
+---
+
+# 改动后必测
+
+完成任何功能修复、行为变更或重构后：
+
+1. **补充对应测试** — 新增或更新单元/Compose 测试，覆盖本次改动的核心行为与回归点；逻辑放 `src/test`，UI 优先 Robolectric（参考现有 `ReaderSleepTimerSheetTest`）。
+2. **跑全量测试** — 在项目根目录执行 `.\runAndroidTest.ps1`（即 `testDebugUnitTest`），确保全部通过后再视为完成。
+3. **不要只跑单个用例** — 除非在调试中，收尾时必须跑完整测试套件。
+
+若改动无法合理写测试（纯文案、资源等），在回复中简要说明原因；其余情况默认需要测试。

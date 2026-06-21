@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.andriod.reader.domain.GitHubSettings
+import com.andriod.reader.service.LastSleepTimerPreset
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -78,6 +79,27 @@ class SettingsStore @Inject constructor(
         prefs.edit().putBoolean(KEY_LOOP_PLAYBACK, enabled).apply()
     }
 
+    fun getLastSleepTimerPreset(): LastSleepTimerPreset {
+        return LastSleepTimerPreset.fromStored(
+            type = prefs.getString(KEY_LAST_SLEEP_TIMER_TYPE, LastSleepTimerPreset.TYPE_FIXED),
+            minutes = prefs.getInt(
+                KEY_LAST_SLEEP_TIMER_MINUTES,
+                LastSleepTimerPreset.DEFAULT_MINUTES,
+            ),
+        )
+    }
+
+    fun saveLastSleepTimerPreset(preset: LastSleepTimerPreset) {
+        val editor = prefs.edit().putString(
+            KEY_LAST_SLEEP_TIMER_TYPE,
+            LastSleepTimerPreset.storedType(preset),
+        )
+        LastSleepTimerPreset.storedMinutes(preset)?.let { minutes ->
+            editor.putInt(KEY_LAST_SLEEP_TIMER_MINUTES, minutes)
+        }
+        editor.apply()
+    }
+
     companion object {
         private const val KEY_TOKEN = "github_token"
         private const val KEY_OWNER = "github_owner"
@@ -88,5 +110,7 @@ class SettingsStore @Inject constructor(
         private const val KEY_VOICE_PREFERENCE = "voice_preference"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         private const val KEY_LOOP_PLAYBACK = "loop_playback"
+        private const val KEY_LAST_SLEEP_TIMER_TYPE = "last_sleep_timer_type"
+        private const val KEY_LAST_SLEEP_TIMER_MINUTES = "last_sleep_timer_minutes"
     }
 }

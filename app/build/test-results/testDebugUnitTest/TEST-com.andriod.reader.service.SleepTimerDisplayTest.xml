@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.andriod.reader.service.SleepTimerDisplayTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-06-21T07:54:43" hostname="WILL-WIN" time="0.001">
+  <properties/>
+  <testcase name="formatFixedRemainingMs_zero" classname="com.andriod.reader.service.SleepTimerDisplayTest" time="0.0"/>
+  <testcase name="afterNoteEndStatusLabel_withoutEstimate" classname="com.andriod.reader.service.SleepTimerDisplayTest" time="0.0"/>
+  <testcase name="formatFixedRemainingMs_minutesAndSeconds" classname="com.andriod.reader.service.SleepTimerDisplayTest" time="0.0"/>
+  <testcase name="formatFixedRemainingMs_roundsUpToSecond" classname="com.andriod.reader.service.SleepTimerDisplayTest" time="0.001"/>
+  <testcase name="afterNoteEndStatusLabel_withEstimate" classname="com.andriod.reader.service.SleepTimerDisplayTest" time="0.0"/>
+  <testcase name="fixedCountdownLabel" classname="com.andriod.reader.service.SleepTimerDisplayTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -45,6 +45,9 @@ fun TtsMiniPlayerBar(
         session.isPaused -> "已暂停"
         else -> "正在朗读"
     }
+    val displaySubtitle = session.sleepTimerLabel?.takeIf { session.sleepTimerActive }?.let {
+        "$subtitle · $it"
+    } ?: subtitle
 
     Surface(
         modifier = modifier
@@ -92,7 +95,7 @@ fun TtsMiniPlayerBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = subtitle,
+                        text = displaySubtitle,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

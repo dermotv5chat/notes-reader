@@ -9,6 +9,9 @@ import com.andriod.reader.data.repository.NoteRepository
 import com.andriod.reader.domain.Note
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
+import com.andriod.reader.service.LastSleepTimerPreset
+import com.andriod.reader.service.SleepTimerPresetPolicy
+import com.andriod.reader.service.SleepTimerMode
 import com.andriod.reader.service.TtsHelper
 import com.andriod.reader.service.TtsPlaybackManager
 import com.andriod.reader.service.TtsPlaybackSession
@@ -21,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import javax.inject.Inject
 
 data class ReaderUiState(
@@ -40,6 +44,14 @@ data class ReaderUiState(
     val ttsError: String? = null,
     val loopEnabled: Boolean = false,
     val ttsSettingsVisible: Boolean = false,
+    val sleepTimerVisible: Boolean = false,
+    val sleepTimerSliderMinutes: Float = 0f,
+    val sleepTimerMode: SleepTimerMode = SleepTimerMode.Off,
+    val sleepTimerRemainingMs: Long? = null,
+    val sleepTimerLabel: String? = null,
+    val lastSleepTimerPresetSubtitle: String = "30 分钟",
+    val estimatedNoteRemainingMinutes: Int = 0,
+    val canScheduleAfterNoteEnd: Boolean = false,
     val backgroundNoteTitle: String? = null,
     val notificationPermissionDenied: Boolean = false,
 )
@@ -62,6 +74,7 @@ class ReaderViewModel @Inject constructor(
             selectedVoiceId = settingsStore.getSelectedVoiceId(),
             voicePreference = readVoicePreference(),
             loopEnabled = settingsStore.isLoopPlaybackEnabled(),
+            lastSleepTimerPresetSubtitle = settingsStore.getLastSleepTimerPreset().displaySubtitle(),
         ),
     )
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
@@ -94,12 +107,25 @@ class ReaderViewModel @Inject constructor(
         val isDifferentNote = session.fileName != null &&
             currentFileName != null &&
             session.fileName != currentFileName
+        val current = _uiState.value
+        val estimatedMinutes = if (session.sleepTimerMode == SleepTimerMode.AfterNoteEnd) {
+            TtsPlaybackManager.estimateNoteRemainingMinutes(
+                noteContent = current.note?.content,
+                speechRate = current.speechRate,
+            )
+        } else {
+            current.estimatedNoteRemainingMinutes
+        }
         _uiState.update {
             it.copy(
                 segmentIndex = session.segmentIndex,
                 segmentTotal = session.segmentTotal,
                 isPlaying = session.isPlaying,
                 backgroundNoteTitle = if (isDifferentNote) session.title else null,
+                sleepTimerMode = session.sleepTimerMode,
+                sleepTimerRemainingMs = session.sleepTimerRemainingMs,
+                sleepTimerLabel = session.sleepTimerLabel,
+                estimatedNoteRemainingMinutes = estimatedMinutes,
             )
         }
     }
@@ -201,6 +227,64 @@ class ReaderViewModel @Inject constructor(
 
     fun closeTtsSettings() {
         _uiState.update { it.copy(ttsSettingsVisible = false, voicePickerExpanded = false) }
+    }
+
+    fun openSleepTimer() {
+        val note = _uiState.value.note
+        val sliderMinutes = TtsPlaybackManager.initialSleepTimerSliderMinutes(context).toFloat()
+        _uiState.update {
+            it.copy(
+                sleepTimerVisible = true,
+                sleepTimerSliderMinutes = sliderMinutes,
+                estimatedNoteRemainingMinutes = TtsPlaybackManager.estimateNoteRemainingMinutes(
+                    noteContent = note?.content,
+                    speechRate = it.speechRate,
+                ),
+                canScheduleAfterNoteEnd = TtsPlaybackManager.noteHasReadableContent(note?.content),
+                lastSleepTimerPresetSubtitle = settingsStore.getLastSleepTimerPreset().displaySubtitle(),
+            )
+        }
+    }
+
+    fun closeSleepTimer() {
+        val rounded = _uiState.value.sleepTimerSliderMinutes.roundToInt().coerceIn(0, 90)
+        if (SleepTimerPresetPolicy.shouldPersistOnSheetClose(rounded)) {
+            settingsStore.saveLastSleepTimerPreset(LastSleepTimerPreset.FixedMinutes(rounded))
+        }
+        _uiState.update { it.copy(sleepTimerVisible = false) }
+    }
+
+    fun onSleepTimerSliderFinished(minutes: Float) {
+        val rounded = minutes.roundToInt().coerceIn(0, 90)
+        viewModelScope.launch {
+            _uiState.update { it.copy(sleepTimerSliderMinutes = rounded.toFloat()) }
+            TtsPlaybackManager.setSleepTimerMinutes(context, rounded)
+        }
+    }
+
+    fun applySleepTimerAfterNoteEnd() {
+        TtsPlaybackManager.setSleepTimerAfterNoteEnd(context)
+        _uiState.update {
+            it.copy(
+                sleepTimerVisible = false,
+                sleepTimerSliderMinutes = 0f,
+                lastSleepTimerPresetSubtitle = settingsStore.getLastSleepTimerPreset().displaySubtitle(),
+            )
+        }
+    }
+
+    fun applyLastSleepTimerPreset() {
+        val preset = TtsPlaybackManager.applyLastSleepTimerPreset(context)
+        _uiState.update {
+            it.copy(
+                sleepTimerVisible = false,
+                sleepTimerSliderMinutes = when (preset) {
+                    is LastSleepTimerPreset.FixedMinutes -> preset.minutes.toFloat()
+                    LastSleepTimerPreset.AfterNoteEnd -> it.sleepTimerSliderMinutes
+                },
+                lastSleepTimerPresetSubtitle = preset.displaySubtitle(),
+            )
+        }
     }
 
     fun toggleLoop() {
@@ -347,5 +431,19 @@ class ReaderViewModel @Inject constructor(
     fun detachTtsUi() {
         TtsPlaybackManager.detachUiCallbacks()
         controller = null
+    }
+
+    fun prepareForEdit(): Boolean {
+        val note = _uiState.value.note ?: return false
+        val session = TtsPlaybackManager.session.value
+        if (session.hasActiveSession && session.fileName == note.fileName) {
+            TtsPlaybackManager.stopPlayback()
+        }
+        return true
+    }
+
+    fun refreshNote() {
+        val refreshed = noteRepository.getNote(fileName) ?: return
+        _uiState.update { it.copy(note = refreshed) }
     }
 }

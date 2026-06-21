@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,6 +37,7 @@ import com.andriod.reader.util.NotificationPermission
 @Composable
 fun ReaderScreen(
     onBack: () -> Unit,
+    onEdit: (fileName: String) -> Unit,
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -58,6 +60,7 @@ fun ReaderScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.refreshNotificationPermissionState()
+                viewModel.refreshNote()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -86,6 +89,14 @@ fun ReaderScreen(
         onSpeechPitchChange = viewModel::onSpeechPitchChange,
     )
 
+    ReaderSleepTimerSheet(
+        uiState = uiState,
+        onDismiss = viewModel::closeSleepTimer,
+        onSliderFinished = viewModel::onSleepTimerSliderFinished,
+        onAfterNoteEnd = viewModel::applySleepTimerAfterNoteEnd,
+        onApplyLastPreset = viewModel::applyLastSleepTimerPreset,
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -93,6 +104,19 @@ fun ReaderScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    uiState.note?.let { note ->
+                        IconButton(
+                            onClick = {
+                                if (viewModel.prepareForEdit()) {
+                                    onEdit(note.fileName)
+                                }
+                            },
+                        ) {
+                            Icon(Icons.Default.Edit, contentDescription = "编辑")
+                        }
                     }
                 },
             )
@@ -111,6 +135,7 @@ fun ReaderScreen(
                 onNextSegment = viewModel::nextSegment,
                 onToggleLoop = viewModel::toggleLoop,
                 onOpenTtsSettings = viewModel::openTtsSettings,
+                onOpenSleepTimer = viewModel::openSleepTimer,
                 onOpenNotificationSettings = viewModel::openNotificationSettings,
             )
         },

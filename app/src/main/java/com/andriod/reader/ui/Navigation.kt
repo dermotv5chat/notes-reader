@@ -3,6 +3,8 @@ package com.andriod.reader.ui
 import android.net.Uri
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -72,6 +74,7 @@ fun ReaderApp(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.navigationBars,
         bottomBar = {
             if (showMiniBar || showBottomBar) {
                 Column {
@@ -158,6 +161,7 @@ fun ReaderApp(
             composable("reader?fileName={fileName}") {
                 ReaderScreen(
                     onBack = { navController.popBackStack() },
+                    onEdit = { fileName -> navController.navigate(Routes.editor(fileName)) },
                 )
             }
         }

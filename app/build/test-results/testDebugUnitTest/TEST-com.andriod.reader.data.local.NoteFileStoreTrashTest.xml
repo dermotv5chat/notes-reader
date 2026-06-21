@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andriod.reader.data.local.NoteFileStoreTrashTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-06-20T12:57:41" hostname="WILL-WIN" time="0.038">
+<testsuite name="com.andriod.reader.data.local.NoteFileStoreTrashTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-06-21T07:54:43" hostname="WILL-WIN" time="0.042">
   <properties/>
-  <testcase name="trashFile_moveAndRestore_preservesContent" classname="com.andriod.reader.data.local.NoteFileStoreTrashTest" time="0.012"/>
-  <testcase name="trashEntry_syncState_roundTripInJson" classname="com.andriod.reader.data.local.NoteFileStoreTrashTest" time="0.025"/>
+  <testcase name="trashFile_moveAndRestore_preservesContent" classname="com.andriod.reader.data.local.NoteFileStoreTrashTest" time="0.009"/>
+  <testcase name="trashEntry_syncState_roundTripInJson" classname="com.andriod.reader.data.local.NoteFileStoreTrashTest" time="0.033"/>
   <system-out><![CDATA[]]></system-out>
   <system-err><![CDATA[]]></system-err>
 </testsuite>

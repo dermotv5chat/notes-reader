@@ -20,17 +20,89 @@
 
 ## 构建
 
+### `assembleDebug` 与 `install2device.ps1` 的区别
+
+| | `.\gradlew assembleDebug` | `.\install2device.ps1` |
+|---|---|---|
+| **作用** | 只编译、打包 | 编译 + 安装到已连接手机 |
+| **产出** | `app/build/outputs/apk/debug/app-debug.apk` | 手机上已安装的新版 App |
+| **需要 USB 连接设备** | 否 | 是（`adb devices` 显示 `device`） |
+| **自动配置 Java / SDK** | 否 | 是 |
+| **自动配置 Gradle 缓存** | 否 | 是（见下方说明） |
+
+关系：`install2device.ps1` **内部会调用** `assembleDebug`，再执行 `adb install -r`。  
+只想确认能否编译、或只要 APK 文件 → 用 `gradlew assembleDebug`；改完要在真机上看效果 → 用 `install2device.ps1`。
+
+**Gradle 缓存：** Wrapper 会把 Gradle 下载到 `%USERPROFILE%\.gradle\wrapper\dists\`，正常情况下**只下载一次**。若在 Cursor 终端等沙箱环境里直接跑 `gradlew` 可能走临时目录并重复下载；`install2device.ps1` 已默认设置 `GRADLE_USER_HOME` 指向本机缓存。直接跑 `gradlew` 时可手动指定：
+
+```powershell
+$env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
+```
+
+### 仅构建（不安装）
+
 ```powershell
 $env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
 $env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+$env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
 cd E:\workspace\andriod-reader
 .\gradlew.bat assembleDebug
 ```
 
-若 Gradle 下载慢，可先用腾讯云镜像手动下载 `gradle-8.9-bin.zip`，或使用本地 Gradle：
+若 Gradle 下载卡住，检查 `%USERPROFILE%\.gradle\wrapper\dists\gradle-8.9-bin\` 下是否有未下完的 `.part` / `.lck`；完整包应位于对应 hash 目录的 `gradle-8.9-bin.zip`（约 136 MB）。
+
+## 测试
+
+### `testDebugUnitTest` 与 `runAndroidTest.ps1` 的区别
+
+| | `.\gradlew testDebugUnitTest` | `.\runAndroidTest.ps1` |
+|---|---|---|
+| **作用** | 跑 JVM 单元测试 | 同上（默认），并自动配置 Java / Gradle 缓存 |
+| **Compose UI 测试** | 是（Robolectric，无需连手机） | 是 |
+| **需要 USB 连接设备** | 否 | 否（默认）；加 `-Instrumented` 时才需要 |
+| **典型耗时** | 数十秒 | 数十秒 |
+
+关系：`runAndroidTest.ps1` **默认调用** `testDebugUnitTest`，包含定时关闭等 Compose UI 测试（`ReaderSleepTimerSheetTest`），在电脑上即可跑完，不必装测试 APK 到手机。
+
+**若直接跑 `gradlew` 报 `JAVA_HOME is not set`**，请先设置 Java 或使用脚本（脚本会自动指向 Android Studio JBR）：
 
 ```powershell
-& "$env:TEMP\gradle-8.9\bin\gradle.bat" assembleDebug
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
+```
+
+### 方式一：一键脚本（推荐）
+
+**跑全部单元测试：**
+
+```powershell
+cd E:\workspace\andriod-reader
+.\runAndroidTest.ps1
+```
+
+**只跑指定测试类：**
+
+```powershell
+.\runAndroidTest.ps1 -TestClass com.andriod.reader.ui.reader.ReaderSleepTimerSheetTest
+```
+
+脚本会自动配置 `JAVA_HOME`、`GRADLE_USER_HOME`；默认走 Robolectric，无需连接手机。
+
+### 方式二：命令行 gradle
+
+```powershell
+$env:JAVA_HOME = "C:\Program Files\Android\Android Studio\jbr"
+$env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
+cd E:\workspace\andriod-reader
+.\gradlew.bat testDebugUnitTest
+```
+
+### 真机仪器测试（可选，较慢）
+
+仅在需要验证真机行为时使用；小米/HyperOS 可能需开启 **USB 调试（通过 USB 安装）**，且 `connectedDebugAndroidTest` 可能长时间停在 `0/N completed`：
+
+```powershell
+.\runAndroidTest.ps1 -Instrumented -TestClass com.andriod.reader.ui.reader.ReaderSleepTimerSheetTest
 ```
 
 构建产物路径：
@@ -63,6 +135,8 @@ cd E:\workspace\andriod-reader
 cd E:\workspace\andriod-reader
 .\install2device.ps1
 ```
+
+脚本会自动配置 `JAVA_HOME`、`ANDROID_HOME`、`GRADLE_USER_HOME`，执行 `assembleDebug`，并对所有已连接设备 `adb install -r`。等价于「构建」+「方式三」里的 adb 安装步骤。
 
 Git Bash / WSL 可用 `./install2device.sh`，但首次往往要下载 Gradle，明显更慢。详见 [docs/install-to-device.md](docs/install-to-device.md)。
 
@@ -108,6 +182,8 @@ cd E:\workspace\andriod-reader
 - 项目已配置 `release` 构建类型，但**尚未配置正式签名密钥**；本地可执行 `assembleRelease` 打出包，若要公开发布或上架，还需在 `app/build.gradle.kts` 中配置 `signingConfigs`（keystore）
 
 对自己用：继续 `assembleDebug` + `adb install -r` 即可。
+
+Debug / Release 差异、性能说明，以及 **为何不要在 Debug 上开 minify**，见 [docs/debug-vs-release-builds.md](docs/debug-vs-release-builds.md)。
 
 ## 首次使用
 

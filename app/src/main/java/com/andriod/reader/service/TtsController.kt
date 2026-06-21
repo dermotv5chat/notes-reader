@@ -34,13 +34,15 @@ import kotlinx.coroutines.CompletableDeferred
 import java.util.concurrent.atomic.AtomicBoolean
 
 class TtsController(
-    private val context: Context,
+    context: Context,
     private val settingsStore: SettingsStore,
     private var onSegmentChanged: (Int, Int) -> Unit,
     private var onPlaybackStateChanged: (Boolean) -> Unit,
     private var onSpeakError: (String) -> Unit,
     private val onSessionChanged: () -> Unit = {},
+    private val sleepTimerStateProvider: () -> TtsSleepTimerState = { TtsSleepTimerState() },
 ) : TextToSpeech.OnInitListener {
+    private val appContext = context.applicationContext
     private var tts: TextToSpeech? = null
     private var ready = false
     private var selectedVoice: Voice? = null
@@ -56,8 +58,37 @@ class TtsController(
     private var engineTryIndex = 0
     private var activeEnginePackage: String? = null
     private val attemptedEngines = mutableListOf<String>()
-    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var audioFocusRequest: AudioFocusRequest? = null
+    private var hasAudioFocus = false
+    private var pausedByAudioFocus = false
+    private val wakeLock = TtsWakeLock(appContext)
+
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                pausedByAudioFocus = false
+                if (isPlaying.get() && !isPaused.get()) {
+                    pause()
+                    abandonAudioFocus()
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK,
+            -> {
+                if (isPlaying.get() && !isPaused.get()) {
+                    pausedByAudioFocus = true
+                    pauseForAudioFocusLoss()
+                }
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                if (isPlaying.get() && isPaused.get() && pausedByAudioFocus) {
+                    pausedByAudioFocus = false
+                    resume()
+                }
+            }
+        }
+    }
 
     private var awaitingInitAttemptId = 0
     private var currentFileName: String? = null
@@ -77,6 +108,14 @@ class TtsController(
             return
         }
         try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                engine.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build(),
+                )
+            }
             engine.setSpeechRate(speechRate)
             engine.setPitch(pitch)
             engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -89,7 +128,11 @@ class TtsController(
                         onSegmentChanged(currentIndex, segments.size)
                         notifySessionChanged()
                         speakCurrent()
-                    } else if (TtsPlaybackEndAction.shouldRestartAfterLastSegment(loopEnabled)) {
+                    } else if (TtsPlaybackEndAction.shouldContinueAfterLastSegment(
+                            loopEnabled,
+                            sleepTimerStateProvider(),
+                        )
+                    ) {
                         currentIndex = 0
                         onSegmentChanged(currentIndex, segments.size)
                         notifySessionChanged()
@@ -152,7 +195,7 @@ class TtsController(
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
             shutdownEngineOnly()
             attemptedEngines.clear()
-            engineTryOrder = TtsHelper.engineTryOrder(hostContext)
+            engineTryOrder = TtsHelper.engineTryOrder(appContext)
 
             for ((index, enginePackage) in engineTryOrder.withIndex()) {
                 engineTryIndex = index
@@ -167,7 +210,7 @@ class TtsController(
                 ready = false
                 selectedVoice = null
 
-                tts = TtsHelper.createTextToSpeech(hostContext, { status ->
+                tts = TtsHelper.createTextToSpeech(appContext, { status ->
                     if (attemptId != awaitingInitAttemptId) return@createTextToSpeech
                     onInit(status)
                 }, enginePackage)
@@ -201,9 +244,15 @@ class TtsController(
 
     fun isLoopEnabled(): Boolean = loopEnabled
 
+    fun allSegmentTexts(): List<String> = segments.toList()
+
+    fun currentSegmentIndex(): Int = currentIndex
+
+    fun currentSpeechRate(): Float = speechRate
+
     fun diagnostics(): TtsHelper.TtsDiagnostics =
         TtsHelper.getDiagnostics(
-            context = context,
+            context = appContext,
             engine = tts,
             activeEnginePackage = activeEnginePackage ?: tts?.defaultEngine,
             preferredVoiceName = settingsStore.getSelectedVoiceId(),
@@ -280,31 +329,52 @@ class TtsController(
         currentIndex = 0
         isPlaying.set(true)
         isPaused.set(false)
+        pausedByAudioFocus = false
         onSegmentChanged(currentIndex, segments.size)
         onPlaybackStateChanged(true)
         notifySessionChanged()
+        if (!ensureAudioFocus()) {
+            onSpeakError("无法获取音频焦点，请关闭其他正在播放的应用后重试")
+            stop()
+            return
+        }
+        wakeLock.acquire()
         speakCurrent()
     }
 
     fun pause() {
         if (!isPlaying.get()) return
+        pausedByAudioFocus = false
+        pauseForAudioFocusLoss()
+    }
+
+    private fun pauseForAudioFocusLoss() {
+        if (!isPlaying.get() || isPaused.get()) return
         tts?.stop()
         isPaused.set(true)
+        wakeLock.release()
         onPlaybackStateChanged(false)
         notifySessionChanged()
     }
 
     fun resume() {
         if (!isPlaying.get() || !isPaused.get()) return
+        if (!ensureAudioFocus()) {
+            onSpeakError("无法获取音频焦点，请关闭其他正在播放的应用后重试")
+            return
+        }
         isPaused.set(false)
         onPlaybackStateChanged(true)
         notifySessionChanged()
+        wakeLock.acquire()
         speakCurrent()
     }
 
     fun stop() {
         tts?.stop()
         abandonAudioFocus()
+        wakeLock.release()
+        pausedByAudioFocus = false
         isPlaying.set(false)
         isPaused.set(false)
         currentIndex = 0
@@ -385,7 +455,7 @@ class TtsController(
             onSpeakError("语音引擎尚未就绪")
             return
         }
-        if (!requestAudioFocus()) {
+        if (!ensureAudioFocus()) {
             onSpeakError("无法获取音频焦点，请关闭其他正在播放的应用后重试")
             return
         }
@@ -399,24 +469,31 @@ class TtsController(
         }
     }
 
+    private fun ensureAudioFocus(): Boolean {
+        if (hasAudioFocus) return true
+        hasAudioFocus = requestAudioFocus()
+        return hasAudioFocus
+    }
+
     private fun requestAudioFocus(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build(),
                 )
+                .setOnAudioFocusChangeListener(audioFocusChangeListener)
                 .build()
             audioFocusRequest = request
             audioManager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         } else {
             @Suppress("DEPRECATION")
             audioManager.requestAudioFocus(
-                null,
+                audioFocusChangeListener,
                 AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK,
+                AudioManager.AUDIOFOCUS_GAIN,
             ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         }
     }
@@ -426,18 +503,13 @@ class TtsController(
             audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
         } else {
             @Suppress("DEPRECATION")
-            audioManager.abandonAudioFocus(null)
+            audioManager.abandonAudioFocus(audioFocusChangeListener)
         }
         audioFocusRequest = null
+        hasAudioFocus = false
     }
 
-    private fun splitSegments(text: String): List<String> {
-        return text.split(Regex("(?<=[。！？；;.!?\\n])|(?<=[，,])"))
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .ifEmpty { listOf(text.trim()) }
-            .filter { it.isNotEmpty() }
-    }
+    private fun splitSegments(text: String): List<String> = TtsSegmentSplitter.split(text)
 
     companion object {
         private const val PER_ENGINE_TIMEOUT_MS = 8_000L
@@ -523,12 +595,16 @@ object TtsNotificationHelper {
             .build()
     }
 
-    private fun subtitleFor(session: TtsPlaybackSession): String = when {
-        session.isPlaying && session.segmentTotal > 0 ->
-            "段落 ${session.segmentIndex + 1} / ${session.segmentTotal}"
-        session.isPaused -> "已暂停"
-        session.isPlaying -> "正在朗读"
-        else -> "已停止"
+    private fun subtitleFor(session: TtsPlaybackSession): String {
+        val base = when {
+            session.isPlaying && session.segmentTotal > 0 ->
+                "段落 ${session.segmentIndex + 1} / ${session.segmentTotal}"
+            session.isPaused -> "已暂停"
+            session.isPlaying -> "正在朗读"
+            else -> "已停止"
+        }
+        val timerLabel = session.sleepTimerLabel?.takeIf { session.sleepTimerActive }
+        return if (timerLabel != null) "$base · $timerLabel" else base
     }
 }
 

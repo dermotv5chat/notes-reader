@@ -12,6 +12,11 @@ if (-not $env:JAVA_HOME) {
 if (-not $env:JAVA_HOME) {
     throw "JAVA_HOME not set. Install Android Studio or set JAVA_HOME to JDK 17."
 }
+$env:Path = "$(Join-Path $env:JAVA_HOME 'bin');$env:Path"
+
+if (-not $env:GRADLE_USER_HOME) {
+    $env:GRADLE_USER_HOME = Join-Path $env:USERPROFILE ".gradle"
+}
 
 if (-not $env:ANDROID_HOME) {
     $localProps = Join-Path $Root "local.properties"

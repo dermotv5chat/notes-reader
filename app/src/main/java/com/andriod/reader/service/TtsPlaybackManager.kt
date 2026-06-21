@@ -1,6 +1,7 @@
 package com.andriod.reader.service
 
 import android.content.Context
+import com.andriod.reader.data.local.MarkdownPlainText
 import com.andriod.reader.data.remote.SettingsStore
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -9,8 +10,12 @@ import kotlinx.coroutines.flow.asStateFlow
 
 object TtsPlaybackManager {
     private var controller: TtsController? = null
+    private var appContext: Context? = null
     private val _session = MutableStateFlow(TtsPlaybackSession())
     val session: StateFlow<TtsPlaybackSession> = _session.asStateFlow()
+
+    private var sleepTimer: TtsSleepTimer? = null
+    private var sleepTimerPausedWithPlayback = false
 
     private val noopSegment: (Int, Int) -> Unit = { _, _ -> }
     private val noopPlayback: (Boolean) -> Unit = {}
@@ -23,20 +28,56 @@ object TtsPlaybackManager {
         ).settingsStore()
     }
 
+    private fun ensureTimer(context: Context): TtsSleepTimer {
+        appContext = context.applicationContext
+        return sleepTimer ?: TtsSleepTimer(
+            context = context.applicationContext,
+            onSessionChanged = { syncSession() },
+            onExpired = { stopPlayback(clearTimer = false) },
+        ).also { sleepTimer = it }
+    }
+
     private fun syncSession() {
-        _session.value = controller?.playbackSnapshot() ?: TtsPlaybackSession()
+        val base = controller?.playbackSnapshot() ?: TtsPlaybackSession()
+        updateSleepTimerForPlayback(base)
+        val timer = sleepTimer?.snapshot() ?: TtsSleepTimerState()
+        _session.value = base.copy(
+            sleepTimerMode = timer.mode,
+            sleepTimerRemainingMs = timer.remainingMs,
+            sleepTimerLabel = timer.label,
+        )
+    }
+
+    private fun updateSleepTimerForPlayback(session: TtsPlaybackSession) {
+        val timer = sleepTimer ?: return
+        when {
+            session.hasActiveSession && session.isPaused && !sleepTimerPausedWithPlayback -> {
+                timer.onPlaybackPaused()
+                sleepTimerPausedWithPlayback = true
+            }
+            session.hasActiveSession && session.isPlaying && sleepTimerPausedWithPlayback -> {
+                timer.onPlaybackResumed()
+                sleepTimerPausedWithPlayback = false
+            }
+            !session.hasActiveSession -> {
+                sleepTimerPausedWithPlayback = false
+            }
+        }
     }
 
     fun getOrCreate(context: Context): TtsController {
+        appContext = context.applicationContext
+        ensureTimer(context)
         val existing = controller
         if (existing != null) return existing
         return TtsController(
-            context = context,
+            context = context.applicationContext,
             settingsStore = settingsStore(context),
             onSegmentChanged = noopSegment,
             onPlaybackStateChanged = noopPlayback,
             onSpeakError = noopError,
             onSessionChanged = { syncSession() },
+            sleepTimerStateProvider = { sleepTimer?.snapshot() ?: TtsSleepTimerState() },
         ).also {
             controller = it
             syncSession()
@@ -73,6 +114,10 @@ object TtsPlaybackManager {
         content: String,
         withForegroundService: Boolean = true,
     ) {
+        val previousFile = controller?.playbackSnapshot()?.fileName
+        if (previousFile != null && previousFile != fileName) {
+            sleepTimer?.cancel()
+        }
         controller?.start(fileName, title, content)
         syncSession()
         if (withForegroundService) {
@@ -91,14 +136,93 @@ object TtsPlaybackManager {
         syncSession()
     }
 
-    fun stopPlayback() {
+    fun stopPlayback(clearTimer: Boolean = true) {
+        if (clearTimer) {
+            sleepTimer?.cancel()
+        }
         controller?.stop()
         syncSession()
     }
 
+    fun onSleepTimerAlarm() {
+        sleepTimer?.onAlarmFired()
+    }
+
+    fun setSleepTimerMinutes(context: Context, minutes: Int) {
+        ensureTimer(context).setMinutes(minutes) {}
+        syncSession()
+    }
+
+    fun setSleepTimerAfterNoteEnd(context: Context) {
+        ensureTimer(context).setAfterNoteEnd()
+        settingsStore(context).saveLastSleepTimerPreset(LastSleepTimerPreset.AfterNoteEnd)
+        syncSession()
+    }
+
+    fun clearSleepTimer(context: Context) {
+        ensureTimer(context).cancel()
+        syncSession()
+    }
+
+    fun getLastSleepTimerPreset(context: Context): LastSleepTimerPreset =
+        settingsStore(context).getLastSleepTimerPreset()
+
+    fun applyLastSleepTimerPreset(context: Context): LastSleepTimerPreset {
+        val preset = getLastSleepTimerPreset(context)
+        when (preset) {
+            is LastSleepTimerPreset.FixedMinutes -> setSleepTimerMinutes(context, preset.minutes)
+            LastSleepTimerPreset.AfterNoteEnd -> setSleepTimerAfterNoteEnd(context)
+        }
+        return preset
+    }
+
+    fun initialSleepTimerSliderMinutes(context: Context): Int {
+        val active = sleepTimerSliderMinutes()
+        if (active > 0) return active
+        return when (val preset = getLastSleepTimerPreset(context)) {
+            is LastSleepTimerPreset.FixedMinutes -> preset.minutes
+            LastSleepTimerPreset.AfterNoteEnd -> 0
+        }
+    }
+
+    fun noteHasReadableContent(noteContent: String?): Boolean {
+        if (noteContent.isNullOrBlank()) return false
+        return MarkdownPlainText.stripForSpeech(noteContent).isNotBlank()
+    }
+
+    fun estimateNoteRemainingMinutes(noteContent: String?, speechRate: Float): Int {
+        val ctrl = controller
+        if (ctrl != null && ctrl.allSegmentTexts().isNotEmpty()) {
+            return TtsRemainingEstimate.estimateNoteRemainingMinutes(
+                segments = ctrl.allSegmentTexts(),
+                fromIndex = ctrl.currentSegmentIndex(),
+                speechRate = ctrl.currentSpeechRate(),
+            )
+        }
+        val plain = noteContent?.let { MarkdownPlainText.stripForSpeech(it) } ?: return 0
+        if (plain.isBlank()) return 0
+        val segments = TtsSegmentSplitter.split(plain)
+        return TtsRemainingEstimate.estimateNoteRemainingMinutes(
+            segments = segments,
+            fromIndex = 0,
+            speechRate = speechRate,
+        )
+    }
+
+    fun sleepTimerSliderMinutes(): Int {
+        val timer = sleepTimer?.snapshot() ?: return 0
+        if (timer.mode == SleepTimerMode.FixedMinutes && timer.remainingMs != null) {
+            return ((timer.remainingMs + 59_999) / 60_000).toInt().coerceIn(0, 90)
+        }
+        return 0
+    }
+
     fun release() {
+        sleepTimer?.cancel()
         controller?.shutdown()
         controller = null
+        sleepTimer = null
+        sleepTimerPausedWithPlayback = false
         _session.value = TtsPlaybackSession()
     }
 

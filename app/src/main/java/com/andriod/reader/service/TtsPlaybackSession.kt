@@ -7,7 +7,13 @@ data class TtsPlaybackSession(
     val segmentTotal: Int = 0,
     val isPlaying: Boolean = false,
     val isPaused: Boolean = false,
+    val sleepTimerMode: SleepTimerMode = SleepTimerMode.Off,
+    val sleepTimerRemainingMs: Long? = null,
+    val sleepTimerLabel: String? = null,
 ) {
     val hasActiveSession: Boolean
         get() = fileName != null && segmentTotal > 0 && (isPlaying || isPaused)
+
+    val sleepTimerActive: Boolean
+        get() = sleepTimerMode != SleepTimerMode.Off
 }

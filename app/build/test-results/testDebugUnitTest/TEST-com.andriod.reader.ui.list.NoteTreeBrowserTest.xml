@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andriod.reader.ui.list.NoteTreeBrowserTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-06-20T12:57:41" hostname="WILL-WIN" time="0.003">
+<testsuite name="com.andriod.reader.ui.list.NoteTreeBrowserTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2026-06-21T07:54:45" hostname="WILL-WIN" time="0.004">
   <properties/>
-  <testcase name="listAt_includesVirtualEmptyFolder" classname="com.andriod.reader.ui.list.NoteTreeBrowserTest" time="0.001"/>
+  <testcase name="listAt_includesVirtualEmptyFolder" classname="com.andriod.reader.ui.list.NoteTreeBrowserTest" time="0.002"/>
   <testcase name="listAt_nestedFolder_showsChildFolderAndDirectFiles" classname="com.andriod.reader.ui.list.NoteTreeBrowserTest" time="0.0"/>
   <testcase name="parentFolder_returnsAncestor" classname="com.andriod.reader.ui.list.NoteTreeBrowserTest" time="0.0"/>
   <testcase name="listAt_root_showsImmediateFoldersAndFiles" classname="com.andriod.reader.ui.list.NoteTreeBrowserTest" time="0.001"/>

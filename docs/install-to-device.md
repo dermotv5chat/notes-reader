@@ -120,6 +120,8 @@ INSTALL_FAILED_USER_RESTRICTED: Install canceled by user
 
 当前一键脚本只构建并安装 **Debug**。Release 需配置签名后再用。
 
+Debug / Release 区别、运行性能，以及 **不要在 Debug 上开启 `isMinifyEnabled`**，见 [debug-vs-release-builds.md](debug-vs-release-builds.md)。
+
 ## 其他安装方式
 
 - **Android Studio**：选中设备 → Run ▶，适合调试断点。

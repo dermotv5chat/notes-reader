@@ -1,0 +1,77 @@
+# 2026-06-21T07:40:46.067000100Z:
+test_suite_meta_data {
+  scheduled_test_case_count: 1
+}
+test_status: FAILED
+test_result {
+  test_case {
+    test_class: "ReaderSleepTimerSheetTest"
+    test_package: "com.andriod.reader.ui.reader"
+    test_method: "lastPresetSubtitle_isIndependentOfSliderValue"
+    start_time {
+      seconds: 1782026930
+      nanos: 617000000
+    }
+    end_time {
+      seconds: 1782027635
+      nanos: 376000000
+    }
+  }
+  test_status: FAILED
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "E:\\workspace\\andriod-reader\\app\\build\\outputs\\androidTest-results\\connected\\debug\\23127PN0CC - 16\\logcat-com.andriod.reader.ui.reader.ReaderSleepTimerSheetTest-lastPresetSubtitle_isIndependentOfSliderValue.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "E:\\workspace\\andriod-reader\\app\\build\\outputs\\androidTest-results\\connected\\debug\\23127PN0CC - 16\\device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "E:\\workspace\\andriod-reader\\app\\build\\outputs\\androidTest-results\\connected\\debug\\23127PN0CC - 16\\meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "E:\\workspace\\andriod-reader\\app\\build\\outputs\\androidTest-results\\connected\\debug\\23127PN0CC - 16\\cpuinfo"
+    }
+  }
+}
+output_artifact {
+  label {
+    label: "test-results.log"
+    namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
+  }
+  source_path {
+    path: "E:\\workspace\\andriod-reader\\app\\build\\outputs\\androidTest-results\\connected\\debug\\23127PN0CC - 16\\testlog\\test-results.log"
+  }
+  type: TEST_DATA
+  mime_type: "text/plain"
+}
+issue {
+  namespace {
+    namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
+  }
+  severity: SEVERE
+  code: 1
+  name: "INSTRUMENTATION_FAILED"
+  message: "Test run failed to complete. Instrumentation run failed due to Process crashed."
+}
