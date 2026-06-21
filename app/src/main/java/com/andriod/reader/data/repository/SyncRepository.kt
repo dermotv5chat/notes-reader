@@ -135,9 +135,16 @@ class SyncRepository @Inject constructor(
             }
 
             val states = syncStateStore.readAll().toMutableMap()
+            val trashedPaths = noteFileStore.listTrashEntries()
+                .map { SyncPathUtils.normalize(it.originalPath) }
+                .toSet()
 
             remoteItems.forEach { item ->
                 val localPath = SyncPathUtils.normalize(item.path)
+                val localState = states[localPath]
+                if (SyncDownloadPolicy.shouldSkipRemoteItem(localPath, trashedPaths, localState)) {
+                    return@forEach
+                }
                 val response = gitHubApi.getContents(
                     owner = settings.owner,
                     repo = settings.repo,
@@ -147,7 +154,6 @@ class SyncRepository @Inject constructor(
                 val remoteRaw = decodeContent(response.content)
                 val remoteParsed = MarkdownParser.parse(localPath, remoteRaw)
                 val localRaw = noteFileStore.readRawFile(localPath)
-                val localState = states[localPath]
 
                 if (localRaw != null && localState?.syncStatus == SyncStatus.PENDING) {
                     val localParsed = MarkdownParser.parse(localPath, localRaw)

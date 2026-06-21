@@ -110,7 +110,14 @@ class NoteFileStore @Inject constructor(
         trashFile.writeText(raw)
         file.delete()
         cleanupEmptyParents(file.parentFile)
-        states.remove(fileName)
+        if (syncState.githubSha != null) {
+            states[fileName] = syncState.copy(
+                pendingDelete = true,
+                syncStatus = SyncStatus.PENDING,
+            )
+        } else {
+            states.remove(fileName)
+        }
         syncStateStore.writeAll(states)
 
         val entry = TrashEntry(

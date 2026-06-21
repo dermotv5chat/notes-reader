@@ -17,16 +17,22 @@
 
 根据变更撰写 **1–2 句** commit message（说明 why，遵循仓库近期风格，如 `chore:`、`fix:`、`feat:`）。有用户指定文案则用用户的。
 
-**禁止**提交：`.env`、`pat.txt`、`local.properties`、密钥、`app/build/` 等构建产物（`commit.ps1` 已排除，勿用 `git add -f` 强行加入）。
+**禁止**提交：`.env`、`pat.txt`、`local.properties`、密钥、`app/build/` 等构建产物（`commit.sh` 已排除，勿用 `git add -f` 强行加入）。
 
-在项目根目录执行（PowerShell）：
+**本机 SSH 只在 WSL 配置**，不要直接用 PowerShell 的 `git push`。在项目根目录执行：
 
 ```powershell
-# 仅提交
+# 推荐：PowerShell 入口，内部自动走 WSL
 .\commit.ps1 "此处为 commit message"
-
-# 提交并 push 到当前分支对应远端
 .\commit.ps1 -p "此处为 commit message"
+```
+
+或在 WSL 内：
+
+```bash
+cd /mnt/e/workspace/andriod-reader   # 按实际盘符调整
+./commit.sh "此处为 commit message"
+./commit.sh -p "此处为 commit message"
 ```
 
 根据上文「是否需要 push」选择是否加 `-p`。

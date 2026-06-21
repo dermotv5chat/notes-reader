@@ -1,0 +1,21 @@
+---
+description: Git 提交与 push 走 WSL（SSH 仅在 WSL 配置）
+alwaysApply: true
+---
+
+# Git 提交走 WSL
+
+本机 **GitHub SSH 只在 WSL 里配置**，Windows PowerShell 里没有密钥。执行 `/commit` 或提交代码时：
+
+1. **优先 WSL**，不要直接用 PowerShell 的 `git push`（会 `Permission denied (publickey)`）。
+2. 在项目根目录使用：
+   ```powershell
+   .\commit.ps1 -p "commit message"
+   ```
+   `commit.ps1` 会自动调用 WSL 里的 `./commit.sh`。
+3. 或在 WSL 终端内：
+   ```bash
+   cd /mnt/e/workspace/andriod-reader
+   ./commit.sh -p "commit message"
+   ```
+4. 仍先 `git status` / `git diff` / `git log` 再写 message；勿提交 `pat.txt`、`local.properties`、`app/build/` 等。

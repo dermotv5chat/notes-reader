@@ -1,8 +1,8 @@
 # Stage project changes, commit, and optionally push.
+# Git push uses WSL when available (SSH is configured there, not in Windows PowerShell).
 # Usage:
 #   .\commit.ps1 "chore: update readme"
 #   .\commit.ps1 -p "fix: create notes inside current folder"
-#   .\commit.ps1 -Push "feat: add sleep timer"
 
 param(
     [Alias("p")]
@@ -26,8 +26,41 @@ Examples:
 "@
 }
 
+function ConvertTo-WslPath([string]$WindowsPath) {
+    $full = (Resolve-Path $WindowsPath).Path
+    if ($full -match '^([A-Za-z]):\\(.*)$') {
+        $drive = $matches[1].ToLower()
+        $rest = $matches[2] -replace '\\', '/'
+        return "/mnt/$drive/$rest"
+    }
+    throw "Cannot convert path to WSL: $WindowsPath"
+}
+
+function Invoke-WslCommit {
+    param(
+        [bool]$DoPush,
+        [string]$CommitMessage
+    )
+    if (-not (Get-Command wsl -ErrorAction SilentlyContinue)) {
+        throw "WSL not found. Run ./commit.sh inside WSL, or install WSL for push via SSH."
+    }
+    $wslRoot = ConvertTo-WslPath $Root
+    $escaped = $CommitMessage -replace "'", "'\\''"
+    $pushFlag = if ($DoPush) { "-p" } else { "" }
+    $cmd = "cd '$wslRoot' && chmod +x ./commit.sh 2>/dev/null; ./commit.sh $pushFlag '$escaped'"
+    Write-Host "==> Using WSL (SSH): wsl bash -lc ..."
+    wsl bash -lc $cmd
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
+# Prefer WSL: same repo, SSH keys, and git identity as the user's normal workflow.
+if (Get-Command wsl -ErrorAction SilentlyContinue) {
+    Invoke-WslCommit -DoPush:$Push -CommitMessage $Message
+    exit 0
+}
+
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    throw "git not found in PATH."
+    throw "git not found in PATH and WSL is unavailable."
 }
 
 git rev-parse --is-inside-work-tree *> $null
@@ -60,15 +93,8 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if ($Push) {
-    $branch = git rev-parse --abbrev-ref HEAD
-    Write-Host "==> Push branch: $branch"
-    git rev-parse --abbrev-ref "@{u}" *> $null
-    if ($LASTEXITCODE -ne 0) {
-        git push -u origin $branch
-    } else {
-        git push
-    }
-    exit $LASTEXITCODE
+    Write-Warning "Push skipped: WSL not available. Configure WSL SSH or run ./commit.sh -p in WSL."
+    exit 1
 }
 
-Write-Host "==> Done. Use -p to push: .\commit.ps1 -p `"$Message`""
+Write-Host "==> Done. Use -p to push via WSL: .\commit.ps1 -p `"$Message`""

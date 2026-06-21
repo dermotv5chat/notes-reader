@@ -122,13 +122,21 @@ cd E:\workspace\andriod-reader
 
 ### 脚本（手动或 Agent 调用）
 
+**SSH 在 WSL**：`commit.ps1` 会自动转调 WSL 里的 `commit.sh`（含 push）。也可直接在 WSL 运行 `./commit.sh`。
+
 ```powershell
 cd E:\workspace\andriod-reader
 .\commit.ps1 "fix: 新建笔记放入当前文件夹"
 .\commit.ps1 -p "fix: 新建笔记放入当前文件夹"
 ```
 
-脚本会自动 `git add`（排除 `app/build/`、`.gradle/`、`local.properties` 等），然后提交。`-p` 与 `-Push` 等价；若本地分支尚未设置 upstream，会自动 `git push -u origin <branch>`。
+```bash
+# WSL 内
+cd /mnt/e/workspace/andriod-reader
+./commit.sh -p "fix: 新建笔记放入当前文件夹"
+```
+
+脚本会自动 `git add`（排除 `app/build/`、`.gradle/`、`local.properties` 等），然后提交；`-p` 时 push 到当前分支对应远端。
 
 构建产物路径：
 
