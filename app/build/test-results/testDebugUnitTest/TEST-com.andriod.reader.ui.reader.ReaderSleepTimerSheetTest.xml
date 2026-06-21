@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.andriod.reader.ui.reader.ReaderSleepTimerSheetTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-06-21T08:05:08" hostname="WILL-WIN" time="1.532">
-  <properties/>
-  <testcase name="lastPresetSubtitle_staysFixedWhenSliderCommits" classname="com.andriod.reader.ui.reader.ReaderSleepTimerSheetTest" time="1.414"/>
-  <testcase name="lastPresetSubtitle_isIndependentOfSliderValue" classname="com.andriod.reader.ui.reader.ReaderSleepTimerSheetTest" time="0.056"/>
-  <testcase name="sliderTap_invokesFinishedOnceWithSelectedMinutes" classname="com.andriod.reader.ui.reader.ReaderSleepTimerSheetTest" time="0.062"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>
