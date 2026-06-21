@@ -79,17 +79,19 @@ class NoteFileStore @Inject constructor(
         return updated.copy(syncStatus = newStatus)
     }
 
-    fun createNote(title: String, content: String): Note {
-        val fileName = MarkdownParser.newFileName()
+    fun createNote(title: String, content: String, parentFolder: String = ""): Note {
+        val fileName = NotePathNames.newNoteFileName(parentFolder)
         val note = Note(
-            id = fileName.removeSuffix(".md"),
+            id = fileName.removeSuffix(".md").substringAfterLast('/'),
             title = title.ifBlank { "无标题" },
             content = content,
             fileName = fileName,
             updatedAt = Instant.now(),
             syncStatus = SyncStatus.LOCAL_ONLY,
         )
-        resolveFile(fileName).writeText(MarkdownParser.serialize(note))
+        val file = resolveFile(fileName)
+        file.parentFile?.mkdirs()
+        file.writeText(MarkdownParser.serialize(note))
         val states = syncStateStore.readAll().toMutableMap()
         states[fileName] = com.andriod.reader.domain.SyncFileState(syncStatus = SyncStatus.LOCAL_ONLY)
         syncStateStore.writeAll(states)

@@ -35,13 +35,14 @@ object Routes {
     const val NOTES = "notes"
     const val SETTINGS = "settings"
     const val EDITOR = "editor?fileName={fileName}"
+    const val EDITOR_IN_FOLDER = "editor?parentFolder={parentFolder}"
     const val READER = "reader?fileName={fileName}"
 
-    fun editor(fileName: String? = null): String =
-        if (fileName == null) {
-            "editor"
-        } else {
-            "editor?fileName=${Uri.encode(fileName)}"
+    fun editor(fileName: String? = null, parentFolder: String = ""): String =
+        when {
+            fileName != null -> "editor?fileName=${Uri.encode(fileName)}"
+            parentFolder.isNotEmpty() -> "editor?parentFolder=${Uri.encode(parentFolder)}"
+            else -> "editor"
         }
 
     fun reader(fileName: String): String = "reader?fileName=${Uri.encode(fileName)}"
@@ -142,13 +143,20 @@ fun ReaderApp(
                 NoteListScreen(
                     onOpenNote = { navController.navigate(Routes.reader(it)) },
                     onEditNote = { navController.navigate(Routes.editor(it)) },
-                    onCreateNote = { navController.navigate(Routes.editor()) },
+                    onCreateNote = { parentFolder ->
+                        navController.navigate(Routes.editor(parentFolder = parentFolder))
+                    },
                 )
             }
             composable(Routes.SETTINGS) {
                 SettingsScreen()
             }
             composable("editor?fileName={fileName}") {
+                EditorScreen(
+                    onDone = { navController.popBackStack() },
+                )
+            }
+            composable("editor?parentFolder={parentFolder}") {
                 EditorScreen(
                     onDone = { navController.popBackStack() },
                 )

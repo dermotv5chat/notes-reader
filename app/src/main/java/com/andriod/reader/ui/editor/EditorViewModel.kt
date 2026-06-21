@@ -39,6 +39,9 @@ class EditorViewModel @Inject constructor(
     private val initialFileName: String? = savedStateHandle.get<String>("fileName")
         ?.let { NavArgs.decodeFileName(it) }
         ?.takeIf { it.isNotEmpty() }
+    private val parentFolder: String = savedStateHandle.get<String>("parentFolder")
+        ?.let { NavArgs.decodeFileName(it) }
+        ?: ""
 
     private val _uiState = MutableStateFlow(EditorUiState())
     val uiState: StateFlow<EditorUiState> = _uiState.asStateFlow()
@@ -183,6 +186,7 @@ class EditorViewModel @Inject constructor(
             val note = noteRepository.createNote(
                 title = state.title,
                 content = state.body.text,
+                parentFolder = parentFolder,
             )
             _uiState.update {
                 it.copy(

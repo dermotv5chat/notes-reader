@@ -29,4 +29,9 @@ object NotePathNames {
         val name = validateSegment(folderName)
         return if (parent.isEmpty()) name else "$parent/$name"
     }
+
+    fun newNoteFileName(parentFolder: String): String {
+        val baseName = MarkdownParser.newFileName().removeSuffix(".md")
+        return buildNotePath(parentFolder, baseName)
+    }
 }

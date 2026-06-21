@@ -25,7 +25,8 @@ class NoteRepository @Inject constructor(
 
     fun getNote(fileName: String): Note? = noteFileStore.getNote(fileName)
 
-    fun createNote(title: String, content: String): Note = noteFileStore.createNote(title, content)
+    fun createNote(title: String, content: String, parentFolder: String = ""): Note =
+        noteFileStore.createNote(title, content, parentFolder)
 
     fun saveNote(note: Note): Note = noteFileStore.saveNote(note)
 

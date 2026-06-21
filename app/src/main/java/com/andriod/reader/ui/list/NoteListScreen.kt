@@ -64,7 +64,7 @@ import java.time.format.DateTimeFormatter
 fun NoteListScreen(
     onOpenNote: (String) -> Unit,
     onEditNote: (String) -> Unit,
-    onCreateNote: () -> Unit,
+    onCreateNote: (parentFolder: String) -> Unit,
     viewModel: NoteListViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -256,7 +256,7 @@ fun NoteListScreen(
         },
         floatingActionButton = {
             if (!uiState.showTrash) {
-                FloatingActionButton(onClick = onCreateNote) {
+                FloatingActionButton(onClick = { onCreateNote(uiState.currentFolder) }) {
                     Icon(Icons.Default.Add, contentDescription = "新建")
                 }
             }
