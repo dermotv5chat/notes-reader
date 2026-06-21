@@ -5,9 +5,13 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.andriod.reader.domain.GitHubSettings
 import com.andriod.reader.service.LastSleepTimerPreset
+import com.andriod.reader.ui.theme.AppThemeMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 @Singleton
 class SettingsStore @Inject constructor(
@@ -24,6 +28,9 @@ class SettingsStore @Inject constructor(
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
+
+    private val _appThemeMode = MutableStateFlow(readAppThemeMode())
+    val appThemeMode: StateFlow<AppThemeMode> = _appThemeMode.asStateFlow()
 
     fun getToken(): String? = prefs.getString(KEY_TOKEN, null)?.takeIf { it.isNotBlank() }
 
@@ -73,6 +80,16 @@ class SettingsStore @Inject constructor(
         prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, enabled).apply()
     }
 
+    fun getAppThemeMode(): AppThemeMode = readAppThemeMode()
+
+    fun saveAppThemeMode(mode: AppThemeMode) {
+        prefs.edit().putString(KEY_APP_THEME_MODE, mode.name).apply()
+        _appThemeMode.value = mode
+    }
+
+    private fun readAppThemeMode(): AppThemeMode =
+        AppThemeMode.fromStored(prefs.getString(KEY_APP_THEME_MODE, AppThemeMode.SYSTEM.name))
+
     fun isLoopPlaybackEnabled(): Boolean = prefs.getBoolean(KEY_LOOP_PLAYBACK, false)
 
     fun saveLoopPlayback(enabled: Boolean) {
@@ -109,6 +126,7 @@ class SettingsStore @Inject constructor(
         private const val KEY_SELECTED_VOICE = "selected_voice_id"
         private const val KEY_VOICE_PREFERENCE = "voice_preference"
         private const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
+        private const val KEY_APP_THEME_MODE = "app_theme_mode"
         private const val KEY_LOOP_PLAYBACK = "loop_playback"
         private const val KEY_LAST_SLEEP_TIMER_TYPE = "last_sleep_timer_type"
         private const val KEY_LAST_SLEEP_TIMER_MINUTES = "last_sleep_timer_minutes"

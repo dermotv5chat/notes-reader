@@ -12,6 +12,9 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -32,6 +35,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.andriod.reader.ui.theme.AppThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,7 +81,17 @@ fun SettingsScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
         ) {
-            Text("GitHub 同步", modifier = Modifier.padding(bottom = 8.dp))
+            Text("外观", modifier = Modifier.padding(bottom = 8.dp))
+            ThemeModeSelector(
+                selected = uiState.themeMode,
+                onSelect = viewModel::onThemeModeChange,
+            )
+            Text(
+                "浅色 / 深色 / 跟随系统。更改后立即生效。",
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            )
+
+            Text("GitHub 同步", modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
             OutlinedTextField(
                 value = uiState.token,
                 onValueChange = viewModel::onTokenChange,
@@ -178,6 +192,31 @@ fun SettingsScreen(
                     .padding(top = 24.dp),
             ) {
                 Text(if (uiState.saved) "已保存" else "保存设置")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThemeModeSelector(
+    selected: AppThemeMode,
+    onSelect: (AppThemeMode) -> Unit,
+) {
+    val modes = AppThemeMode.entries
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        modes.forEachIndexed { index, mode ->
+            SegmentedButton(
+                selected = selected == mode,
+                onClick = { onSelect(mode) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
+            ) {
+                Text(
+                    when (mode) {
+                        AppThemeMode.LIGHT -> "浅色"
+                        AppThemeMode.DARK -> "深色"
+                        AppThemeMode.SYSTEM -> "跟随系统"
+                    },
+                )
             }
         }
     }

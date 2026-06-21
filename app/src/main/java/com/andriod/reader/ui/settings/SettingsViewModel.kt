@@ -10,6 +10,7 @@ import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
 import com.andriod.reader.service.TtsHelper
 import com.andriod.reader.service.TtsPlaybackManager
+import com.andriod.reader.ui.theme.AppThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +27,7 @@ data class SettingsUiState(
     val speechRate: Float = 1.0f,
     val speechPitch: Float = 1.0f,
     val keepScreenOn: Boolean = false,
+    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val saved: Boolean = false,
     val testMessage: String? = null,
     val isTesting: Boolean = false,
@@ -69,6 +71,7 @@ class SettingsViewModel @Inject constructor(
             speechRate = settingsStore.getDefaultSpeechRate(),
             speechPitch = settingsStore.getDefaultSpeechPitch(),
             keepScreenOn = settingsStore.isKeepScreenOn(),
+            themeMode = settingsStore.getAppThemeMode(),
             selectedVoiceId = settingsStore.getSelectedVoiceId(),
             voicePreference = preference,
         )
@@ -80,6 +83,11 @@ class SettingsViewModel @Inject constructor(
     fun onSpeechRateChange(value: Float) = _uiState.update { it.copy(speechRate = value, saved = false) }
     fun onSpeechPitchChange(value: Float) = _uiState.update { it.copy(speechPitch = value, saved = false) }
     fun onKeepScreenOnChange(value: Boolean) = _uiState.update { it.copy(keepScreenOn = value, saved = false) }
+
+    fun onThemeModeChange(mode: AppThemeMode) {
+        settingsStore.saveAppThemeMode(mode)
+        _uiState.update { it.copy(themeMode = mode) }
+    }
 
     fun onVoicePickerExpandedChange(expanded: Boolean) {
         _uiState.update { it.copy(voicePickerExpanded = expanded) }

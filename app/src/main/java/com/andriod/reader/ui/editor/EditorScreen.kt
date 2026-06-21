@@ -35,7 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.andriod.reader.ui.theme.NoteEditorBackground
+import com.andriod.reader.ui.theme.LocalNoteEditorBackground
 
 private val ToolbarHeight = 48.dp
 
@@ -46,14 +46,15 @@ fun EditorScreen(
     viewModel: EditorViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val editorBackground = LocalNoteEditorBackground.current
     val scrollState = rememberScrollState()
     val lastSavedLabel = viewModel.formattedLastSavedAt()
     val showToolbar = uiState.bodyFocused
     val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
 
     Scaffold(
-        modifier = Modifier.background(NoteEditorBackground),
-        containerColor = NoteEditorBackground,
+        modifier = Modifier.background(editorBackground),
+        containerColor = editorBackground,
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             TopAppBar(
@@ -67,7 +68,7 @@ fun EditorScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = NoteEditorBackground,
+                    containerColor = editorBackground,
                 ),
             )
         },
