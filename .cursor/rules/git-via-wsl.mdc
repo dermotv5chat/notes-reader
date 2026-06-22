@@ -1,21 +1,40 @@
 ---
-description: Git 提交与 push 走 WSL（SSH 仅在 WSL 配置）
+description: Git 提交与 push 分工（SSH 仅在 WSL）
 alwaysApply: true
 ---
 
-# Git 提交走 WSL
+# Git 提交与 push
 
-本机 **GitHub SSH 只在 WSL 里配置**，Windows PowerShell 里没有密钥。执行 `/commit` 或提交代码时：
+本机 **GitHub SSH 只在 WSL 里配置**，Windows PowerShell 直接 `git push` 会 `Permission denied (publickey)`。
 
-1. **优先 WSL**，不要直接用 PowerShell 的 `git push`（会 `Permission denied (publickey)`）。
-2. 在项目根目录使用：
+## `/commit` 或手动提交
+
+1. 先并行查看 `git status`、`git diff`、`git log -5 --oneline`，再写 1–2 句 commit message。
+2. 在项目根目录执行（**不要**在 PowerShell 里直接 `git push`）：
    ```powershell
-   .\commit.ps1 -p "commit message"
+   .\commit.ps1 "commit message"      # 仅 commit
+   .\commit.ps1 -p "commit message"   # commit + push
    ```
-   `commit.ps1` 会自动调用 WSL 里的 `./commit.sh`。
-3. 或在 WSL 终端内：
+3. **默认流程**（`commit.ps1`）：
+   - **stage + commit**：Windows git（稳定，避免 WSL 引号/`set -e` 问题）
+   - **push**（`-p`）：WSL 执行 `./commit.sh --push-only`（走 SSH）
+4. 需要 **WSL 的 git 作者信息** 时（少见）：
+   ```powershell
+   .\commit.ps1 -Wsl -p "commit message"
+   ```
+   消息经临时文件传入，避免 shell 引号被拆散。
+5. 或在 WSL 内全流程：
    ```bash
    cd /mnt/e/workspace/andriod-reader
    ./commit.sh -p "commit message"
    ```
-4. 仍先 `git status` / `git diff` / `git log` 再写 message；勿提交 `pat.txt`、`local.properties`、`app/build/` 等。
+
+## 禁止提交
+
+`pat.txt`、`local.properties`、`.env`、`app/build/`、`.gradle/` 等（脚本已 exclude，勿 `git add -f`）。
+
+## 约束
+
+- 不要 `git push --force` 到 main/master
+- 不要改 git config
+- 无变更不空提交；只有用户带 `-p` 才 push

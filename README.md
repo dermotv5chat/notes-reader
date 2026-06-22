@@ -123,12 +123,14 @@ cd E:\workspace\andriod-reader
 
 ### 脚本（手动或 Agent 调用）
 
-**SSH 在 WSL**：`commit.ps1` 会自动转调 WSL 里的 `commit.sh`（含 push）。也可直接在 WSL 运行 `./commit.sh`。
+**SSH 在 WSL**：`commit.ps1` 在 Windows 上完成 `git add` + `commit`，`-p` 时仅 push 走 WSL（`commit.sh --push-only`）。也可直接在 WSL 运行 `./commit.sh` 做全流程。
 
 ```powershell
 cd E:\workspace\andriod-reader
 .\commit.ps1 "fix: 新建笔记放入当前文件夹"
 .\commit.ps1 -p "fix: 新建笔记放入当前文件夹"
+# 可选：全流程在 WSL（含 commit 作者信息）
+.\commit.ps1 -Wsl -p "fix: 新建笔记放入当前文件夹"
 ```
 
 ```bash

@@ -22,12 +22,12 @@
 **本机 SSH 只在 WSL 配置**，不要直接用 PowerShell 的 `git push`。在项目根目录执行：
 
 ```powershell
-# 推荐：PowerShell 入口，内部自动走 WSL
+# 推荐：Windows 上 stage + commit，-p 时由 WSL 执行 git push
 .\commit.ps1 "此处为 commit message"
 .\commit.ps1 -p "此处为 commit message"
 ```
 
-或在 WSL 内：
+或在 WSL 内（全流程在 WSL，含 commit 身份与 SSH push）：
 
 ```bash
 cd /mnt/e/workspace/andriod-reader   # 按实际盘符调整
@@ -35,7 +35,7 @@ cd /mnt/e/workspace/andriod-reader   # 按实际盘符调整
 ./commit.sh -p "此处为 commit message"
 ```
 
-根据上文「是否需要 push」选择是否加 `-p`。
+根据上文「是否需要 push」选择是否加 `-p`。Agent 执行 `commit.ps1 -p` 即可，无需再单独调用 `git push`。
 
 ## 约束
 
