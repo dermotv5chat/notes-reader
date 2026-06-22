@@ -66,9 +66,23 @@ class MarkdownEditorActionsTest {
     }
 
     @Test
-    fun strikethrough_wrapsSelection() {
-        val value = TextFieldValue("delete me", TextRange(0, 6))
-        val result = MarkdownEditorActions.apply(value, FormatAction.Strikethrough)
-        assertEquals("~~delete~~ me", result.text)
+    fun ruleCallout_addsCalloutPrefix() {
+        val value = TextFieldValue("行动才是解决焦虑的方法", TextRange(0, 0))
+        val result = MarkdownEditorActions.apply(value, FormatAction.RuleCallout)
+        assertEquals("> [!rule] 行动才是解决焦虑的方法", result.text)
+    }
+
+    @Test
+    fun ruleCallout_toggleRemovesPrefix() {
+        val value = TextFieldValue("> [!rule] 行动才是解决焦虑的方法", TextRange(5, 5))
+        val result = MarkdownEditorActions.apply(value, FormatAction.RuleCallout)
+        assertEquals("行动才是解决焦虑的方法", result.text)
+    }
+
+    @Test
+    fun habitCallout_addsCalloutPrefix() {
+        val value = TextFieldValue("11 点睡觉", TextRange(0, 0))
+        val result = MarkdownEditorActions.apply(value, FormatAction.HabitCallout)
+        assertEquals("> [!habit] 11 点睡觉", result.text)
     }
 }

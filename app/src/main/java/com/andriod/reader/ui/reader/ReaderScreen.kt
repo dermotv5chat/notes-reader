@@ -5,11 +5,8 @@ import android.os.Build
 import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
@@ -97,6 +94,13 @@ fun ReaderScreen(
         onApplyLastPreset = viewModel::applyLastSleepTimerPreset,
     )
 
+    PracticeSheet(
+        sheetState = uiState.practiceSheet,
+        onDismiss = viewModel::dismissPracticeSheet,
+        onSave = viewModel::savePractice,
+        onClear = viewModel::clearPracticeToday,
+    )
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -140,15 +144,23 @@ fun ReaderScreen(
             )
         },
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            MarkdownContent(
-                text = uiState.note?.content ?: "笔记不存在",
+        if (uiState.note == null) {
+            Text(
+                text = "笔记不存在",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(16.dp),
+            )
+        } else {
+            BlockReaderContent(
+                blocks = uiState.blocks,
+                todayPractice = uiState.todayPractice,
+                onTrackableBlockClick = viewModel::onTrackableBlockClick,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp),
             )
         }
     }

@@ -20,9 +20,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 @Composable
 fun EditorFormattingToolbar(
@@ -72,6 +74,14 @@ fun EditorFormattingToolbar(
                 icon = { Icon(Icons.Default.CheckBoxOutlineBlank, contentDescription = "待办") },
                 onClick = { onFormat(FormatAction.Checkbox) },
             )
+            FormatTextButton(
+                label = "准则",
+                onClick = { onFormat(FormatAction.RuleCallout) },
+            )
+            FormatTextButton(
+                label = "习惯",
+                onClick = { onFormat(FormatAction.HabitCallout) },
+            )
             FormatIconButton(
                 icon = { Icon(Icons.Default.Title, contentDescription = "小标题") },
                 onClick = { onFormat(FormatAction.Heading) },
@@ -87,6 +97,22 @@ fun EditorFormattingToolbar(
                 enabled = canRedo,
             )
         }
+    }
+}
+
+@Composable
+private fun FormatTextButton(
+    label: String,
+    onClick: () -> Unit,
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.height(48.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
+        )
     }
 }
 

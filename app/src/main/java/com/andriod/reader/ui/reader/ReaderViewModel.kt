@@ -6,7 +6,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.data.repository.NoteRepository
+import com.andriod.reader.data.repository.PracticeRepository
 import com.andriod.reader.domain.Note
+import com.andriod.reader.domain.NoteBlock
+import com.andriod.reader.domain.PracticeDayEntry
+import com.andriod.reader.domain.PracticeEvent
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
 import com.andriod.reader.service.LastSleepTimerPreset
@@ -54,6 +58,9 @@ data class ReaderUiState(
     val canScheduleAfterNoteEnd: Boolean = false,
     val backgroundNoteTitle: String? = null,
     val notificationPermissionDenied: Boolean = false,
+    val blocks: List<NoteBlock> = emptyList(),
+    val todayPractice: Map<String, PracticeDayEntry> = emptyMap(),
+    val practiceSheet: PracticeSheetState? = null,
 )
 
 @HiltViewModel
@@ -61,22 +68,12 @@ class ReaderViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
     private val noteRepository: NoteRepository,
+    private val practiceRepository: PracticeRepository,
     private val settingsStore: SettingsStore,
 ) : ViewModel() {
     private val fileName: String = NavArgs.decodeFileName(savedStateHandle.get<String>("fileName"))
 
-    private val _uiState = MutableStateFlow(
-        ReaderUiState(
-            note = noteRepository.getNote(fileName),
-            speechRate = settingsStore.getDefaultSpeechRate(),
-            speechPitch = settingsStore.getDefaultSpeechPitch(),
-            keepScreenOn = settingsStore.isKeepScreenOn(),
-            selectedVoiceId = settingsStore.getSelectedVoiceId(),
-            voicePreference = readVoicePreference(),
-            loopEnabled = settingsStore.isLoopPlaybackEnabled(),
-            lastSleepTimerPresetSubtitle = settingsStore.getLastSleepTimerPreset().displaySubtitle(),
-        ),
-    )
+    private val _uiState = MutableStateFlow(loadInitialState())
     val uiState: StateFlow<ReaderUiState> = _uiState.asStateFlow()
 
     private var controller: com.andriod.reader.service.TtsController? = null
@@ -444,6 +441,78 @@ class ReaderViewModel @Inject constructor(
 
     fun refreshNote() {
         val refreshed = noteRepository.getNote(fileName) ?: return
-        _uiState.update { it.copy(note = refreshed) }
+        _uiState.update { current ->
+            current.copy(
+                note = refreshed,
+                blocks = practiceRepository.parseBlocks(refreshed.content, refreshed.fileName),
+                todayPractice = practiceRepository.getTodayEntriesForNote(refreshed.fileName),
+            )
+        }
+    }
+
+    fun onTrackableBlockClick(block: NoteBlock) {
+        val note = _uiState.value.note ?: return
+        val existing = practiceRepository.getTodayEntry(note.fileName, block.id)
+        _uiState.update {
+            it.copy(
+                practiceSheet = PracticeSheetState(
+                    blockId = block.id,
+                    blockLabel = block.displayLabel(),
+                    existingNote = existing?.note.orEmpty(),
+                    existingEvent = existing?.event,
+                ),
+            )
+        }
+    }
+
+    fun dismissPracticeSheet() {
+        _uiState.update { it.copy(practiceSheet = null) }
+    }
+
+    fun savePractice(event: PracticeEvent, note: String) {
+        val sheet = _uiState.value.practiceSheet ?: return
+        val file = _uiState.value.note?.fileName ?: return
+        practiceRepository.saveTodayEntry(
+            fileName = file,
+            blockId = sheet.blockId,
+            event = event,
+            note = note,
+        )
+        _uiState.update {
+            it.copy(
+                practiceSheet = null,
+                todayPractice = practiceRepository.getTodayEntriesForNote(file),
+            )
+        }
+    }
+
+    fun clearPracticeToday() {
+        val sheet = _uiState.value.practiceSheet ?: return
+        val file = _uiState.value.note?.fileName ?: return
+        practiceRepository.clearTodayEntry(file, sheet.blockId)
+        _uiState.update {
+            it.copy(
+                practiceSheet = null,
+                todayPractice = practiceRepository.getTodayEntriesForNote(file),
+            )
+        }
+    }
+
+    private fun loadInitialState(): ReaderUiState {
+        val note = noteRepository.getNote(fileName)
+        val blocks = note?.let { practiceRepository.parseBlocks(it.content, it.fileName) }.orEmpty()
+        val todayPractice = note?.let { practiceRepository.getTodayEntriesForNote(it.fileName) }.orEmpty()
+        return ReaderUiState(
+            note = note,
+            blocks = blocks,
+            todayPractice = todayPractice,
+            speechRate = settingsStore.getDefaultSpeechRate(),
+            speechPitch = settingsStore.getDefaultSpeechPitch(),
+            keepScreenOn = settingsStore.isKeepScreenOn(),
+            selectedVoiceId = settingsStore.getSelectedVoiceId(),
+            voicePreference = readVoicePreference(),
+            loopEnabled = settingsStore.isLoopPlaybackEnabled(),
+            lastSleepTimerPresetSubtitle = settingsStore.getLastSleepTimerPreset().displaySubtitle(),
+        )
     }
 }

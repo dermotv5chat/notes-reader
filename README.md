@@ -9,6 +9,7 @@
 - 阅读页 Markdown 渲染；朗读前自动剥离格式符号
 - 手动上传/下载到 GitHub 仓库 [dermotv5chat/notes](https://github.com/dermotv5chat/notes)
 - TTS 朗读笔记：语音选择、语速调节、分段播放
+- **行为准则（P1）**：Callout / 待办块可点击，记录今日遵守或违背；详见 [docs/principles-guide.md](docs/principles-guide.md)
 
 详见 [CHANGELOG.md](CHANGELOG.md)。安装到手机见 [docs/install-to-device.md](docs/install-to-device.md)。
 

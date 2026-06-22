@@ -26,6 +26,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.andriod.reader.service.TtsPlaybackManager
 import com.andriod.reader.ui.editor.EditorScreen
+import com.andriod.reader.ui.guide.PrinciplesGuideScreen
 import com.andriod.reader.ui.list.NoteListScreen
 import com.andriod.reader.ui.player.TtsMiniPlayerBar
 import com.andriod.reader.ui.reader.ReaderScreen
@@ -34,6 +35,7 @@ import com.andriod.reader.ui.settings.SettingsScreen
 object Routes {
     const val NOTES = "notes"
     const val SETTINGS = "settings"
+    const val PRINCIPLES_GUIDE = "principles_guide"
     const val EDITOR = "editor?fileName={fileName}"
     const val EDITOR_IN_FOLDER = "editor?parentFolder={parentFolder}"
     const val READER = "reader?fileName={fileName}"
@@ -60,6 +62,7 @@ fun ReaderApp(
     val showBottomBar = currentRoute == Routes.NOTES || currentRoute == Routes.SETTINGS
     val isReader = currentRoute?.startsWith("reader") == true
     val isEditor = currentRoute?.startsWith("editor") == true
+    val isPrinciplesGuide = currentRoute == Routes.PRINCIPLES_GUIDE
     val showMiniBar = session.hasActiveSession && !isReader && (
         currentRoute == Routes.NOTES ||
             currentRoute == Routes.SETTINGS ||
@@ -128,7 +131,7 @@ fun ReaderApp(
             }
         },
     ) { padding ->
-        val navPadding = if (isEditor && !showMiniBar) {
+        val navPadding = if ((isEditor || isPrinciplesGuide) && !showMiniBar) {
             PaddingValues()
         } else {
             padding
@@ -149,7 +152,16 @@ fun ReaderApp(
                 )
             }
             composable(Routes.SETTINGS) {
-                SettingsScreen()
+                SettingsScreen(
+                    onOpenPrinciplesGuide = {
+                        navController.navigate(Routes.PRINCIPLES_GUIDE)
+                    },
+                )
+            }
+            composable(Routes.PRINCIPLES_GUIDE) {
+                PrinciplesGuideScreen(
+                    onBack = { navController.popBackStack() },
+                )
             }
             composable("editor?fileName={fileName}") {
                 EditorScreen(

@@ -330,7 +330,7 @@ class NoteListViewModel @Inject constructor(
     fun upload() {
         viewModelScope.launch {
             _uiState.update { it.copy(isSyncing = true, message = null) }
-            when (val result = syncRepository.uploadPending()) {
+            when (val result = syncRepository.uploadPending(::awaitConflictResolution)) {
                 is SyncResult.Success -> {
                     refresh()
                     _uiState.update {
@@ -352,12 +352,7 @@ class NoteListViewModel @Inject constructor(
     fun download() {
         viewModelScope.launch {
             _uiState.update { it.copy(isSyncing = true, message = null) }
-            when (val result = syncRepository.downloadRemote { conflict ->
-                val deferred = CompletableDeferred<ConflictAction>()
-                pendingConflict = deferred
-                _uiState.update { it.copy(conflict = conflict) }
-                deferred.await()
-            }) {
+            when (val result = syncRepository.downloadRemote(::awaitConflictResolution)) {
                 is SyncResult.Success -> {
                     refresh()
                     _uiState.update {
@@ -378,6 +373,13 @@ class NoteListViewModel @Inject constructor(
         _uiState.update { it.copy(conflict = null) }
         pendingConflict?.complete(action)
         pendingConflict = null
+    }
+
+    private suspend fun awaitConflictResolution(conflict: SyncConflict): ConflictAction {
+        val deferred = CompletableDeferred<ConflictAction>()
+        pendingConflict = deferred
+        _uiState.update { it.copy(conflict = conflict) }
+        return deferred.await()
     }
 
     private fun loadTrashEntries(): List<TrashEntryUi> {

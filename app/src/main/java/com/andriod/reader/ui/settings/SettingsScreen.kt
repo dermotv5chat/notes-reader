@@ -40,6 +40,7 @@ import com.andriod.reader.ui.theme.AppThemeMode
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    onOpenPrinciplesGuide: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -90,6 +91,18 @@ fun SettingsScreen(
                 "浅色 / 深色 / 跟随系统。更改后立即生效。",
                 modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
             )
+
+            Text("行为准则", modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+            Text(
+                "编写准则、阅读页记录今日遵守/违背、Markdown 与工具栏说明。",
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+            OutlinedButton(
+                onClick = onOpenPrinciplesGuide,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("行为准则使用说明")
+            }
 
             Text("GitHub 同步", modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
             OutlinedTextField(

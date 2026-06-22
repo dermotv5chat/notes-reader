@@ -10,10 +10,15 @@ enum class FormatAction {
     BulletList,
     NumberedList,
     Checkbox,
+    RuleCallout,
+    HabitCallout,
     Heading,
 }
 
 object MarkdownEditorActions {
+    private const val RULE_CALLOUT_PREFIX = "> [!rule] "
+    private const val HABIT_CALLOUT_PREFIX = "> [!habit] "
+
     fun apply(value: TextFieldValue, action: FormatAction): TextFieldValue {
         val result = when (action) {
             FormatAction.Bold -> wrap(value.text, value.selection, "**", "**")
@@ -22,6 +27,8 @@ object MarkdownEditorActions {
             FormatAction.BulletList -> toggleLinePrefix(value.text, value.selection, "- ")
             FormatAction.NumberedList -> toggleLinePrefix(value.text, value.selection, "1. ")
             FormatAction.Checkbox -> toggleLinePrefix(value.text, value.selection, "- [ ] ")
+            FormatAction.RuleCallout -> toggleLinePrefix(value.text, value.selection, RULE_CALLOUT_PREFIX)
+            FormatAction.HabitCallout -> toggleLinePrefix(value.text, value.selection, HABIT_CALLOUT_PREFIX)
             FormatAction.Heading -> toggleLinePrefix(value.text, value.selection, "## ")
         }
         return TextFieldValue(result.text, result.selection)

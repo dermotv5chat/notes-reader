@@ -6,7 +6,9 @@ import com.andriod.reader.data.local.NoteFileStore
 import com.andriod.reader.data.local.SyncStateStore
 import com.andriod.reader.data.remote.GitHubApi
 import com.andriod.reader.data.remote.GitHubContentItem
+import com.andriod.reader.data.remote.GitHubContentResponse
 import com.andriod.reader.data.remote.GitHubPutRequest
+import com.andriod.reader.data.remote.GitHubPutResponse
 import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.domain.ConflictAction
 import com.andriod.reader.domain.GitHubSettings
@@ -52,7 +54,9 @@ class SyncRepository @Inject constructor(
         }
     }
 
-    suspend fun uploadPending(): SyncResult = withContext(Dispatchers.IO) {
+    suspend fun uploadPending(
+        conflictResolver: suspend (SyncConflict) -> ConflictAction = { ConflictAction.KeepLocal },
+    ): SyncResult = withContext(Dispatchers.IO) {
         val token = settingsStore.getToken()
             ?: return@withContext SyncResult.Error("请先在设置中配置 GitHub PAT")
         val settings = settingsStore.getGitHubSettings()
@@ -68,51 +72,54 @@ class SyncRepository @Inject constructor(
                 state.pendingDelete || state.syncStatus == SyncStatus.PENDING || state.syncStatus == SyncStatus.LOCAL_ONLY
             }.forEach { (localPath, state) ->
                 val remotePath = state.remotePath ?: SyncPathUtils.normalize(localPath)
-                if (state.pendingDelete) {
-                    val sha = state.githubSha
-                    if (sha != null) {
-                        gitHubApi.deleteContent(
-                            owner = settings.owner,
-                            repo = settings.repo,
-                            path = remotePath,
-                            authorization = auth,
-                            message = "Delete note $localPath",
-                            sha = sha,
-                        )
-                        if (noteFileStore.readRawFile(localPath) != null) {
-                            noteFileStore.deleteLocalFile(localPath)
+                try {
+                    if (state.pendingDelete) {
+                        val sha = state.githubSha
+                        if (sha != null) {
+                            deleteRemoteFile(settings, auth, remotePath, localPath, sha)
+                            if (noteFileStore.readRawFile(localPath) != null) {
+                                noteFileStore.deleteLocalFile(localPath)
+                            }
+                            states.remove(localPath)
+                            deleted++
+                            syncStateStore.writeAll(states)
                         }
-                        states.remove(localPath)
-                        deleted++
+                    } else {
+                        val raw = noteFileStore.readRawFile(localPath) ?: return@forEach
+                        when (
+                            val result = uploadNoteFile(
+                                localPath = localPath,
+                                remotePath = remotePath,
+                                raw = raw,
+                                state = state,
+                                settings = settings,
+                                auth = auth,
+                                conflictResolver = conflictResolver,
+                            )
+                        ) {
+                            is UploadFileResult.Synced -> {
+                                states[localPath] = result.state
+                                uploaded++
+                                syncStateStore.writeAll(states)
+                            }
+                            is UploadFileResult.SyncedWithCopy -> {
+                                states[localPath] = result.mainState
+                                states[result.copyPath] = result.copyState
+                                syncStateStore.writeAll(states)
+                            }
+                        }
                     }
-                } else {
-                    val raw = noteFileStore.readRawFile(localPath) ?: return@forEach
-                    val encoded = Base64.encodeToString(raw.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-                    val response = gitHubApi.putContent(
-                        owner = settings.owner,
-                        repo = settings.repo,
-                        path = remotePath,
-                        authorization = auth,
-                        body = GitHubPutRequest(
-                            message = "Update note $localPath",
-                            content = encoded,
-                            sha = state.githubSha,
-                        ),
-                    )
-                    states[localPath] = SyncFileState(
-                        githubSha = response.content?.sha,
-                        remotePath = remotePath,
-                        syncStatus = SyncStatus.SYNCED,
-                        pendingDelete = false,
-                    )
-                    uploaded++
+                } catch (e: HttpException) {
+                    syncStateStore.writeAll(states)
+                    return@withContext SyncResult.Error(parseUploadHttpError(e, settings, localPath))
                 }
             }
-            syncStateStore.writeAll(states)
             SyncResult.Success(uploaded = uploaded, downloaded = 0, deleted = deleted)
         } catch (e: HttpException) {
+            syncStateStore.writeAll(states)
             SyncResult.Error(parseHttpError(e, settings))
         } catch (e: Exception) {
+            syncStateStore.writeAll(states)
             SyncResult.Error(e.message ?: "上传失败")
         }
     }
@@ -249,6 +256,268 @@ class SyncRepository @Inject constructor(
         }
     }
 
+    private suspend fun uploadNoteFile(
+        localPath: String,
+        remotePath: String,
+        raw: String,
+        state: SyncFileState,
+        settings: GitHubSettings,
+        auth: String,
+        conflictResolver: suspend (SyncConflict) -> ConflictAction,
+    ): UploadFileResult {
+        return try {
+            val response = putNoteContent(settings, auth, localPath, remotePath, raw, state.githubSha)
+            UploadFileResult.Synced(syncedState(response, remotePath))
+        } catch (e: HttpException) {
+            when (e.code()) {
+                409 -> resolveUploadConflict(
+                    localPath = localPath,
+                    remotePath = remotePath,
+                    localRaw = raw,
+                    settings = settings,
+                    auth = auth,
+                    conflictResolver = conflictResolver,
+                )
+                404, 422 -> recreateOrResolveUpload(
+                    localPath = localPath,
+                    remotePath = remotePath,
+                    localRaw = raw,
+                    settings = settings,
+                    auth = auth,
+                    conflictResolver = conflictResolver,
+                )
+                else -> throw e
+            }
+        }
+    }
+
+    private suspend fun recreateOrResolveUpload(
+        localPath: String,
+        remotePath: String,
+        localRaw: String,
+        settings: GitHubSettings,
+        auth: String,
+        conflictResolver: suspend (SyncConflict) -> ConflictAction,
+    ): UploadFileResult {
+        val remoteResponse = fetchRemoteContentFirst(settings, auth, remotePath, localPath)
+        if (remoteResponse == null) {
+            val path = SyncPathUtils.normalize(localPath)
+            val response = putNoteContent(settings, auth, localPath, path, localRaw, sha = null)
+            return UploadFileResult.Synced(syncedState(response, path))
+        }
+        return resolveUploadConflictWithRemote(
+            localPath = localPath,
+            remotePath = remoteResponse.path,
+            localRaw = localRaw,
+            remoteResponse = remoteResponse,
+            settings = settings,
+            auth = auth,
+            conflictResolver = conflictResolver,
+        )
+    }
+
+    private suspend fun resolveUploadConflict(
+        localPath: String,
+        remotePath: String,
+        localRaw: String,
+        settings: GitHubSettings,
+        auth: String,
+        conflictResolver: suspend (SyncConflict) -> ConflictAction,
+    ): UploadFileResult {
+        val remoteResponse = fetchRemoteContentFirst(settings, auth, remotePath, localPath)
+            ?: return recreateOrResolveUpload(
+                localPath = localPath,
+                remotePath = remotePath,
+                localRaw = localRaw,
+                settings = settings,
+                auth = auth,
+                conflictResolver = conflictResolver,
+            )
+        return resolveUploadConflictWithRemote(
+            localPath = localPath,
+            remotePath = remoteResponse.path,
+            localRaw = localRaw,
+            remoteResponse = remoteResponse,
+            settings = settings,
+            auth = auth,
+            conflictResolver = conflictResolver,
+        )
+    }
+
+    private suspend fun resolveUploadConflictWithRemote(
+        localPath: String,
+        remotePath: String,
+        localRaw: String,
+        remoteResponse: GitHubContentResponse,
+        settings: GitHubSettings,
+        auth: String,
+        conflictResolver: suspend (SyncConflict) -> ConflictAction,
+    ): UploadFileResult {
+        val localParsed = MarkdownParser.parse(localPath, localRaw)
+        val remoteParsed = MarkdownParser.parse(localPath, decodeContent(remoteResponse.content))
+
+        if (SyncUploadPolicy.shouldAutoUploadWithFreshSha(localParsed.updatedAt, remoteParsed.updatedAt)) {
+            val response = putNoteContent(
+                settings,
+                auth,
+                localPath,
+                remotePath,
+                localRaw,
+                remoteResponse.sha,
+            )
+            return UploadFileResult.Synced(syncedState(response, remotePath))
+        }
+
+        return when (
+            val action = conflictResolver(
+                SyncConflict(localPath, localParsed.updatedAt, remoteParsed.updatedAt),
+            )
+        ) {
+            ConflictAction.KeepLocal -> {
+                val response = putNoteContent(
+                    settings,
+                    auth,
+                    localPath,
+                    remotePath,
+                    localRaw,
+                    remoteResponse.sha,
+                )
+                UploadFileResult.Synced(syncedState(response, remotePath))
+            }
+            ConflictAction.KeepRemote -> {
+                noteFileStore.writeRawFile(localPath, decodeContent(remoteResponse.content))
+                UploadFileResult.Synced(
+                    SyncFileState(
+                        githubSha = remoteResponse.sha,
+                        remotePath = remotePath,
+                        syncStatus = SyncStatus.SYNCED,
+                        pendingDelete = false,
+                    ),
+                )
+            }
+            is ConflictAction.SaveCopy -> {
+                noteFileStore.writeRawFile(action.newFileName, localRaw)
+                val remoteRaw = decodeContent(remoteResponse.content)
+                noteFileStore.writeRawFile(localPath, remoteRaw)
+                UploadFileResult.SyncedWithCopy(
+                    mainState = SyncFileState(
+                        githubSha = remoteResponse.sha,
+                        remotePath = remotePath,
+                        syncStatus = SyncStatus.SYNCED,
+                        pendingDelete = false,
+                    ),
+                    copyPath = action.newFileName,
+                    copyState = SyncFileState(
+                        syncStatus = SyncStatus.PENDING,
+                        remotePath = SyncPathUtils.normalize(action.newFileName),
+                    ),
+                )
+            }
+        }
+    }
+
+    private suspend fun putNoteContent(
+        settings: GitHubSettings,
+        auth: String,
+        localPath: String,
+        remotePath: String,
+        raw: String,
+        sha: String?,
+    ): GitHubPutResponse {
+        val encoded = Base64.encodeToString(raw.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+        return gitHubApi.putContent(
+            owner = settings.owner,
+            repo = settings.repo,
+            path = remotePath,
+            authorization = auth,
+            body = GitHubPutRequest(
+                message = "Update note $localPath",
+                content = encoded,
+                sha = sha,
+            ),
+        )
+    }
+
+    private suspend fun fetchRemoteContentFirst(
+        settings: GitHubSettings,
+        auth: String,
+        remotePath: String,
+        localPath: String,
+    ): GitHubContentResponse? {
+        for (path in SyncUploadPaths.candidateRemotePaths(remotePath, localPath)) {
+            try {
+                return fetchRemoteContent(settings, auth, path)
+            } catch (e: HttpException) {
+                if (e.code() != 404) throw e
+            }
+        }
+        return null
+    }
+
+    private suspend fun fetchRemoteContent(
+        settings: GitHubSettings,
+        auth: String,
+        remotePath: String,
+    ): GitHubContentResponse = gitHubApi.getContents(
+        owner = settings.owner,
+        repo = settings.repo,
+        path = remotePath,
+        authorization = auth,
+    )
+
+    private suspend fun deleteRemoteFile(
+        settings: GitHubSettings,
+        auth: String,
+        remotePath: String,
+        localPath: String,
+        sha: String,
+    ) {
+        try {
+            gitHubApi.deleteContent(
+                owner = settings.owner,
+                repo = settings.repo,
+                path = remotePath,
+                authorization = auth,
+                message = "Delete note $localPath",
+                sha = sha,
+            )
+        } catch (e: HttpException) {
+            when (e.code()) {
+                404 -> Unit
+                409 -> {
+                    val remote = fetchRemoteContentFirst(settings, auth, remotePath, localPath)
+                        ?: return
+                    gitHubApi.deleteContent(
+                        owner = settings.owner,
+                        repo = settings.repo,
+                        path = remote.path,
+                        authorization = auth,
+                        message = "Delete note $localPath",
+                        sha = remote.sha,
+                    )
+                }
+                else -> throw e
+            }
+        }
+    }
+
+    private fun syncedState(response: GitHubPutResponse, remotePath: String): SyncFileState =
+        SyncFileState(
+            githubSha = response.content?.sha,
+            remotePath = remotePath,
+            syncStatus = SyncStatus.SYNCED,
+            pendingDelete = false,
+        )
+
+    private sealed class UploadFileResult {
+        data class Synced(val state: SyncFileState) : UploadFileResult()
+        data class SyncedWithCopy(
+            val mainState: SyncFileState,
+            val copyPath: String,
+            val copyState: SyncFileState,
+        ) : UploadFileResult()
+    }
+
     private fun authHeader(token: String): String = "Bearer ${token.trim()}"
 
     private fun decodeContent(content: String): String {
@@ -257,18 +526,35 @@ class SyncRepository @Inject constructor(
         return String(bytes, Charsets.UTF_8)
     }
 
-    private fun parseHttpError(e: HttpException, settings: GitHubSettings): String {
-        return when (e.code()) {
+    private fun parseUploadHttpError(e: HttpException, settings: GitHubSettings, filePath: String): String {
+        val prefix = "「$filePath」上传失败："
+        return prefix + when (e.code()) {
             401 -> "GitHub Token 无效或已过期，请重新生成 PAT"
-            404 -> "无法访问 ${settings.owner}/${settings.repo}。\n" +
-                "请确认：\n" +
-                "1. 仓库名和 Owner 正确\n" +
-                "2. Fine-grained Token 已授权该仓库，并勾选 Contents 读写权限\n" +
-                "3. Classic Token 已勾选 repo 权限"
+            404 -> repoAccessHint(settings)
             403 -> "Token 权限不足，请为仓库开启 Contents 读写权限"
+            409 -> "远程文件已被修改，与本地版本冲突"
+            422 -> "GitHub 拒绝了本次更新，请先在设置页测试连接，或尝试下载后再上传"
             else -> e.response()?.errorBody()?.string() ?: "GitHub 请求失败 (${e.code()})"
         }
     }
+
+    private fun parseHttpError(e: HttpException, settings: GitHubSettings): String {
+        return when (e.code()) {
+            401 -> "GitHub Token 无效或已过期，请重新生成 PAT"
+            404 -> repoAccessHint(settings)
+            403 -> "Token 权限不足，请为仓库开启 Contents 读写权限"
+            409 -> "「${settings.owner}/${settings.repo}」上的文件已被修改，与本地版本冲突"
+            else -> e.response()?.errorBody()?.string() ?: "GitHub 请求失败 (${e.code()})"
+        }
+    }
+
+    private fun repoAccessHint(settings: GitHubSettings): String =
+        "无法访问 ${settings.owner}/${settings.repo}。\n" +
+            "请确认：\n" +
+            "1. 仓库名和 Owner 正确\n" +
+            "2. Token 有效；私有仓库无权限时 GitHub 也会返回 404\n" +
+            "3. Fine-grained Token 已授权该仓库，并勾选 Contents 读写权限\n" +
+            "4. Classic Token 已勾选 repo 权限"
 
     private sealed class ConnectionTestResult {
         data class Success(val message: String) : ConnectionTestResult()
