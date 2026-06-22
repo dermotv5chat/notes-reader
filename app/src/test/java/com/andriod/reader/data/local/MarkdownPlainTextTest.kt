@@ -37,6 +37,18 @@ class MarkdownPlainTextTest {
     }
 
     @Test
+    fun stripForSpeech_stripsHabitCallout() {
+        val result = MarkdownPlainText.stripForSpeech("> [!habit]  11点睡觉，你没有晚睡的资本；")
+        assertEquals("11点睡觉，你没有晚睡的资本；", result)
+    }
+
+    @Test
+    fun stripForSpeech_stripsRuleCalloutAndBlockAnchor() {
+        val result = MarkdownPlainText.stripForSpeech("> [!rule] 别诉苦 ^no-complain")
+        assertEquals("别诉苦", result)
+    }
+
+    @Test
     fun stripForSpeech_handlesMixedFormatting() {
         val raw = """
             ## 标题
