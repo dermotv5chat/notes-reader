@@ -2,6 +2,8 @@
 
 本地 Markdown 笔记 + GitHub 手动同步 + TTS 语音朗读的 Android App。
 
+**Agent 上手指南：** [AGENTS.md](AGENTS.md)（架构、模块地图、近期变更、必守规则与文档索引）
+
 ## 功能
 
 - 离线新建、编辑、删除笔记（本地 `notes/*.md`）

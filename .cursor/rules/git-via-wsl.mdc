@@ -10,20 +10,21 @@ alwaysApply: true
 ## `/commit` 或手动提交
 
 1. 先并行查看 `git status`、`git diff`、`git log -5 --oneline`，再写 1–2 句 commit message。
-2. 在项目根目录执行（**不要**在 PowerShell 里直接 `git push`）：
+2. **默认后台提交**：用 Task `subagent_type: shell` + `run_in_background: true` 执行 `.\commit.ps1`（带 `-p` 则 push）；主对话立即继续，勿 Await。用户要同步等结果时用 `/commit -sync -p`。
+3. 在项目根目录（前台 `-sync` 或用户手动）：
    ```powershell
    .\commit.ps1 "commit message"      # 仅 commit
    .\commit.ps1 -p "commit message"   # commit + push
    ```
-3. **默认流程**（`commit.ps1`）：
+4. **默认流程**（`commit.ps1`）：
    - **stage + commit**：Windows git（稳定，避免 WSL 引号/`set -e` 问题）
    - **push**（`-p`）：WSL 执行 `./commit.sh --push-only`（走 SSH）
-4. 需要 **WSL 的 git 作者信息** 时（少见）：
+5. 需要 **WSL 的 git 作者信息** 时（少见）：
    ```powershell
    .\commit.ps1 -Wsl -p "commit message"
    ```
    消息经临时文件传入，避免 shell 引号被拆散。
-5. 或在 WSL 内全流程：
+6. 或在 WSL 内全流程：
    ```bash
    cd /mnt/e/workspace/andriod-reader
    ./commit.sh -p "commit message"
