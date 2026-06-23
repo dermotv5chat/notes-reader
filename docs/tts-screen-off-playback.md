@@ -47,4 +47,5 @@ Manifest 中已有 `WAKE_LOCK` 权限，但需在播放期间主动 acquire/rele
 ## 相关文档
 
 - [tts-notification-permission.md](tts-notification-permission.md)
+- [tts-bluetooth-media-controls.md](tts-bluetooth-media-controls.md)
 - [tts-engine-init-failure.md](tts-engine-init-failure.md)

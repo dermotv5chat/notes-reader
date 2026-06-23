@@ -213,9 +213,11 @@ $env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
 
 ## 11. 路线图（未实现 / 讨论中）
 
+完整讨论稿与实现进度见 [`.cursor/plans/notion式准则践行_7019e43e.plan.md`](.cursor/plans/notion式准则践行_7019e43e.plan.md)。
+
 | 阶段 | 内容 | 状态 |
 |------|------|------|
-| **P1** | 阅读页点击块 → 今日遵守/违背 | ✅ 已实现 |
+| **P1** | Callout 可点、今日践行、历史、评论、隐式块 ID | ✅ 已实现 |
 | **P2** | 准则频率（daily/when）、色条、日历 | 📋 计划 |
 | **P3** | 全文朗读 session 统计 | 📋 计划 |
 | **二期** | 块拖拽编辑、富文本、自动同步等 | 📋 [docs/二期功能讨论.md](docs/二期功能讨论.md) |
@@ -232,6 +234,7 @@ $env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
 | 问题 | 处理 |
 |------|------|
 | TTS 在 MIUI 初始化失败 | Activity Context、`attemptId` 防竞态 → [docs/tts-engine-init-failure.md](docs/tts-engine-init-failure.md) |
+| 车机/蓝牙耳机无法暂停 | AVRCP 媒体键解析 → [docs/tts-bluetooth-media-controls.md](docs/tts-bluetooth-media-controls.md) |
 | 子目录笔记导航失败 | 路径用 query 参数 + encode，勿用 path 段 |
 | `commit.ps1` WSL 引号 | 已改为 Windows commit + WSL push-only；勿 `wsl bash -lc $unquoted` |
 | 编辑页键盘顶内容 | 见 [docs/editor-keyboard-toolbar-layout.md](docs/editor-keyboard-toolbar-layout.md) |
@@ -246,6 +249,7 @@ $env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
 | [README.md](README.md) | 用户向：构建、安装、首次配置 |
 | [CHANGELOG.md](CHANGELOG.md) | 1.0.0 功能清单 |
 | [docs/principles-guide.md](docs/principles-guide.md) | 行为准则 Markdown 写法 |
+| [.cursor/plans/notion式准则践行_7019e43e.plan.md](.cursor/plans/notion式准则践行_7019e43e.plan.md) | 准则践行 P1–P5 讨论稿与实现进度 |
 | [docs/github-sync-upload-conflict.md](docs/github-sync-upload-conflict.md) | 上传 409/404 根因与修复 |
 | [docs/二期功能讨论.md](docs/二期功能讨论.md) | 二期成本与方案 |
 | [docs/install-to-device.md](docs/install-to-device.md) | 真机安装 |
@@ -253,6 +257,7 @@ $env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
 | [docs/tts-engine-init-failure.md](docs/tts-engine-init-failure.md) | TTS 排查 |
 | [docs/tts-screen-off-playback.md](docs/tts-screen-off-playback.md) | 熄屏播放 |
 | [docs/tts-notification-permission.md](docs/tts-notification-permission.md) | 通知权限 |
+| [docs/tts-bluetooth-media-controls.md](docs/tts-bluetooth-media-controls.md) | 蓝牙 / 车机播放暂停（AVRCP） |
 | [.cursor/commands/commit.md](.cursor/commands/commit.md) | `/commit` 命令 |
 | [.cursor/rules/](.cursor/rules/) | Agent 持久规则 |
 

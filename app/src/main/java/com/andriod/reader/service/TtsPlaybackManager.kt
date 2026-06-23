@@ -126,13 +126,26 @@ object TtsPlaybackManager {
     }
 
     fun togglePlayPause() {
+        val snap = controller?.playbackSnapshot() ?: return
+        if (snap.isPlaying) {
+            pausePlayback()
+        } else if (snap.hasActiveSession) {
+            resumePlayback()
+        }
+    }
+
+    fun pausePlayback() {
+        val ctrl = controller ?: return
+        if (!ctrl.playbackSnapshot().isPlaying) return
+        ctrl.pause()
+        syncSession()
+    }
+
+    fun resumePlayback() {
         val ctrl = controller ?: return
         val snap = ctrl.playbackSnapshot()
-        if (snap.isPlaying) {
-            ctrl.pause()
-        } else if (snap.hasActiveSession) {
-            ctrl.resume()
-        }
+        if (!snap.hasActiveSession || snap.isPlaying) return
+        ctrl.resume()
         syncSession()
     }
 

@@ -1,13 +1,14 @@
 package com.andriod.reader.service
 
+import android.app.PendingIntent
 import android.app.Service
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
-import android.view.KeyEvent
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +25,12 @@ class TtsPlaybackService : Service() {
         super.onCreate()
         TtsNotificationHelper.ensureChannel(this)
         mediaSession = MediaSessionCompat(this, TAG).apply {
+            setFlags(
+                MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
+                    MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS,
+            )
             setCallback(mediaSessionCallback)
+            setMediaButtonReceiver(mediaButtonPendingIntent())
             isActive = true
         }
         serviceScope.launch {
@@ -47,6 +53,16 @@ class TtsPlaybackService : Service() {
                     startForegroundWith(session)
                 }
             }
+            Intent.ACTION_MEDIA_BUTTON -> {
+                if (TtsMediaButtonHandler.handleMediaButtonIntent(intent)) {
+                    updateForeground(TtsPlaybackManager.session.value)
+                } else {
+                    val keyEvent = TtsMediaButtonHandler.keyEventFrom(intent)
+                    if (keyEvent != null) {
+                        mediaSession?.controller?.dispatchMediaButtonEvent(keyEvent)
+                    }
+                }
+            }
         }
         return START_STICKY
     }
@@ -63,11 +79,11 @@ class TtsPlaybackService : Service() {
 
     private val mediaSessionCallback = object : MediaSessionCompat.Callback() {
         override fun onPlay() {
-            TtsPlaybackManager.togglePlayPause()
+            TtsPlaybackManager.resumePlayback()
         }
 
         override fun onPause() {
-            TtsPlaybackManager.togglePlayPause()
+            TtsPlaybackManager.pausePlayback()
         }
 
         override fun onStop() {
@@ -76,22 +92,10 @@ class TtsPlaybackService : Service() {
         }
 
         override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
-            val keyCode = mediaButtonEvent?.getIntExtra(Intent.EXTRA_KEY_EVENT, KeyEvent.KEYCODE_UNKNOWN)
-            return when (keyCode) {
-                KeyEvent.KEYCODE_MEDIA_PLAY,
-                KeyEvent.KEYCODE_MEDIA_PAUSE,
-                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-                -> {
-                    TtsPlaybackManager.togglePlayPause()
-                    true
-                }
-                KeyEvent.KEYCODE_MEDIA_STOP -> {
-                    TtsPlaybackManager.stopPlayback()
-                    stopForegroundIfIdle()
-                    true
-                }
-                else -> super.onMediaButtonEvent(mediaButtonEvent)
+            if (TtsMediaButtonHandler.handleMediaButtonIntent(mediaButtonEvent)) {
+                return true
             }
+            return super.onMediaButtonEvent(mediaButtonEvent)
         }
     }
 
@@ -156,6 +160,19 @@ class TtsPlaybackService : Service() {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
+    }
+
+    private fun mediaButtonPendingIntent(): PendingIntent {
+        val receiver = ComponentName(this, TtsMediaButtonReceiver::class.java)
+        val intent = Intent(Intent.ACTION_MEDIA_BUTTON).apply {
+            component = receiver
+        }
+        return PendingIntent.getBroadcast(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     companion object {
