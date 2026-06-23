@@ -24,6 +24,7 @@ class PrinciplesGuideContentTest {
         assertTrue(body.contains("GitHub"))
         assertTrue(body.contains(".meta"))
         assertTrue(body.contains("自动折行"))
-        assertTrue(body.contains("历史记录"))
+        assertTrue(body.contains("长按"))
+        assertTrue(body.contains("评论"))
     }
 }

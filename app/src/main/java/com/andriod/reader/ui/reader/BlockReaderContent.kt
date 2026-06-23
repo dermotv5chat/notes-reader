@@ -20,13 +20,11 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -183,7 +181,7 @@ private fun PracticeStatusDot(todayEntry: PracticeDayEntry?) {
     val color = when (todayEntry?.event) {
         PracticeEvent.FOLLOWED -> MaterialTheme.colorScheme.primary
         PracticeEvent.VIOLATED -> MaterialTheme.colorScheme.error
-        null -> MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+        PracticeEvent.COMMENT, null -> MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
     }
     Box(
         modifier = Modifier
@@ -230,14 +228,25 @@ internal fun PracticeSheetContent(
     onSave: (PracticeEvent, String) -> Unit,
     onClear: () -> Unit,
 ) {
-    var note by remember(sheetState.blockId) {
-        mutableStateOf("")
+    var pendingNoteEvent by remember(sheetState.blockId) {
+        mutableStateOf<PracticeEvent?>(null)
     }
     var showClearConfirm by remember(sheetState.blockId) {
         mutableStateOf(false)
     }
     var historyExpanded by remember(sheetState.blockId) {
         mutableStateOf(false)
+    }
+
+    pendingNoteEvent?.let { event ->
+        PracticeNoteDialog(
+            event = event,
+            onConfirm = { note ->
+                pendingNoteEvent = null
+                onSave(event, note)
+            },
+            onDismiss = { pendingNoteEvent = null },
+        )
     }
 
     if (showClearConfirm) {
@@ -293,38 +302,39 @@ internal fun PracticeSheetContent(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Button(
-                onClick = { onSave(PracticeEvent.FOLLOWED, note.trim()) },
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag(PracticeSheetTestTags.FOLLOWED_BUTTON),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                ),
-            ) {
-                Text("遵守")
-            }
-            Button(
-                onClick = { onSave(PracticeEvent.VIOLATED, note.trim()) },
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag(PracticeSheetTestTags.VIOLATED_BUTTON),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                ),
-            ) {
-                Text("违背")
-            }
+            PracticeActionButton(
+                label = "遵守",
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                onQuickTap = { onSave(PracticeEvent.FOLLOWED, "") },
+                onLongPressForNote = { pendingNoteEvent = PracticeEvent.FOLLOWED },
+                modifier = Modifier.weight(1f),
+                testTag = PracticeSheetTestTags.FOLLOWED_BUTTON,
+            )
+            PracticeActionButton(
+                label = "违背",
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError,
+                onQuickTap = { onSave(PracticeEvent.VIOLATED, "") },
+                onLongPressForNote = { pendingNoteEvent = PracticeEvent.VIOLATED },
+                modifier = Modifier.weight(1f),
+                testTag = PracticeSheetTestTags.VIOLATED_BUTTON,
+            )
         }
 
-        OutlinedTextField(
-            value = note,
-            onValueChange = { note = it },
+        OutlinedButton(
+            onClick = { pendingNoteEvent = PracticeEvent.COMMENT },
             modifier = Modifier
                 .fillMaxWidth()
-                .testTag(PracticeSheetTestTags.NOTE_FIELD),
-            label = { Text("备注（可选）") },
-            minLines = 2,
+                .testTag(PracticeSheetTestTags.COMMENT_BUTTON),
+        ) {
+            Text("评论")
+        }
+
+        Text(
+            text = "轻点快记 · 长按可加备注 · 评论写想法",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -408,10 +418,12 @@ private fun PracticeHistoryRow(
     val eventLabel = when (entry.event) {
         PracticeEvent.FOLLOWED -> "遵守"
         PracticeEvent.VIOLATED -> "违背"
+        PracticeEvent.COMMENT -> "评论"
     }
     val eventColor = when (entry.event) {
         PracticeEvent.FOLLOWED -> MaterialTheme.colorScheme.primary
         PracticeEvent.VIOLATED -> MaterialTheme.colorScheme.error
+        PracticeEvent.COMMENT -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val timeLabel = formatPracticeTime(entry)
     Column(

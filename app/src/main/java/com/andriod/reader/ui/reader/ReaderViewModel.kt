@@ -453,14 +453,14 @@ class ReaderViewModel @Inject constructor(
     fun onTrackableBlockClick(block: NoteBlock) {
         if (!block.trackable) return
         val note = _uiState.value.note ?: return
-        val existing = practiceRepository.getTodayEntry(note.fileName, block.id)
         val history = practiceRepository.getBlockHistory(note.fileName, block.id)
+        val hasTodayEntry = practiceRepository.hasAnyEntryOnDate(note.fileName, block.id)
         _uiState.update {
             it.copy(
                 practiceSheet = PracticeSheetState(
                     blockId = block.id,
                     blockLabel = block.displayLabel(),
-                    hasTodayEntry = existing != null,
+                    hasTodayEntry = hasTodayEntry,
                     history = history,
                 ),
             )

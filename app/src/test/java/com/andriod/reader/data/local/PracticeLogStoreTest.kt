@@ -154,4 +154,35 @@ class PracticeLogStoreTest {
         assertEquals("legacy", history.single().note)
         assertTrue(logFile.readText().contains("\"recordedAt\""))
     }
+
+    @Test
+    fun getTodayEntry_ignoresCommentOnly() {
+        store.appendEntry(
+            fileName,
+            blockId,
+            PracticeEvent.COMMENT,
+            note = "今天想法",
+            recordedAt = instantOn(today, 10),
+        )
+        assertNull(store.getTodayEntry(fileName, blockId, today))
+        assertTrue(store.hasAnyEntryOnDate(fileName, blockId, today))
+    }
+
+    @Test
+    fun getTodayEntry_usesLatestStatusWhenCommentIsNewer() {
+        store.appendEntry(
+            fileName,
+            blockId,
+            PracticeEvent.FOLLOWED,
+            recordedAt = instantOn(today, 8),
+        )
+        store.appendEntry(
+            fileName,
+            blockId,
+            PracticeEvent.COMMENT,
+            note = "补充想法",
+            recordedAt = instantOn(today, 12),
+        )
+        assertEquals(PracticeEvent.FOLLOWED, store.getTodayEntry(fileName, blockId, today)?.event)
+    }
 }

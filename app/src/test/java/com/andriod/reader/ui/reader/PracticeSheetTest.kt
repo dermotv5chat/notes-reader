@@ -4,10 +4,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import com.andriod.reader.domain.PracticeEvent
 import com.andriod.reader.domain.PracticeLogEntry
 import org.junit.Assert.assertEquals
@@ -47,8 +50,9 @@ class PracticeSheetTest {
     }
 
     @Test
-    fun practiceSheetContent_followedButtonInvokesSave() {
+    fun practiceSheetContent_followedButtonQuickTapSavesWithoutNote() {
         var savedEvent: PracticeEvent? = null
+        var savedNote: String? = null
         composeRule.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 MaterialTheme {
@@ -57,7 +61,10 @@ class PracticeSheetTest {
                             blockId = "id1",
                             blockLabel = "测试准则",
                         ),
-                        onSave = { event, _ -> savedEvent = event },
+                        onSave = { event, note ->
+                            savedEvent = event
+                            savedNote = note
+                        },
                         onClear = {},
                     )
                 }
@@ -68,6 +75,148 @@ class PracticeSheetTest {
             .performClick()
 
         assertEquals(PracticeEvent.FOLLOWED, savedEvent)
+        assertEquals("", savedNote)
+    }
+
+    @Test
+    fun practiceSheetContent_noteFieldHiddenUntilNoteDialog() {
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme {
+                    PracticeSheetContent(
+                        sheetState = PracticeSheetState(
+                            blockId = "id1",
+                            blockLabel = "测试准则",
+                        ),
+                        onSave = { _, _ -> },
+                        onClear = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_FIELD, useUnmergedTree = true)
+            .assertDoesNotExist()
+        composeRule.onNodeWithText("轻点快记 · 长按可加备注 · 评论写想法").assertIsDisplayed()
+    }
+
+    @Test
+    fun practiceSheetContent_commentButtonOpensNoteDialog() {
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme {
+                    PracticeSheetContent(
+                        sheetState = PracticeSheetState(
+                            blockId = "id1",
+                            blockLabel = "测试准则",
+                        ),
+                        onSave = { _, _ -> },
+                        onClear = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(PracticeSheetTestTags.COMMENT_BUTTON, useUnmergedTree = true)
+            .performClick()
+        composeRule.onNodeWithText("写评论").assertIsDisplayed()
+    }
+
+    @Test
+    fun practiceNoteDialog_commentRequiresNonEmptyNote() {
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme {
+                    PracticeNoteDialog(
+                        event = PracticeEvent.COMMENT,
+                        onConfirm = {},
+                        onDismiss = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_CONFIRM_BUTTON, useUnmergedTree = true)
+            .assertIsNotEnabled()
+        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_FIELD, useUnmergedTree = true)
+            .performTextInput("有感而发")
+        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_CONFIRM_BUTTON, useUnmergedTree = true)
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun practiceNoteDialog_commentConfirmSavesNote() {
+        var savedNote: String? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme {
+                    PracticeNoteDialog(
+                        event = PracticeEvent.COMMENT,
+                        onConfirm = { savedNote = it },
+                        onDismiss = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_FIELD, useUnmergedTree = true)
+            .performTextInput("今天想到的事")
+        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_CONFIRM_BUTTON, useUnmergedTree = true)
+            .performClick()
+
+        assertEquals("今天想到的事", savedNote)
+    }
+
+    @Test
+    fun practiceSheetContent_longPressOpensNoteDialog() {
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme {
+                    PracticeSheetContent(
+                        sheetState = PracticeSheetState(
+                            blockId = "id1",
+                            blockLabel = "测试准则",
+                        ),
+                        onSave = { _, _ -> },
+                        onClear = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(PracticeSheetTestTags.FOLLOWED_BUTTON, useUnmergedTree = true)
+            .performTouchInput {
+                down(center)
+                advanceEventTime(500)
+                up()
+            }
+        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_DIALOG, useUnmergedTree = true)
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun practiceNoteDialog_confirmSavesWithNote() {
+        var savedNote: String? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme {
+                    PracticeNoteDialog(
+                        event = PracticeEvent.VIOLATED,
+                        onConfirm = { savedNote = it },
+                        onDismiss = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_DIALOG, useUnmergedTree = true)
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_FIELD, useUnmergedTree = true)
+            .performTextInput("熬夜")
+        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_CONFIRM_BUTTON, useUnmergedTree = true)
+            .performClick()
+
+        assertEquals("熬夜", savedNote)
     }
 
     @Test

@@ -38,7 +38,7 @@ class PracticeLogStore @Inject constructor(
     ): Map<String, PracticeDayEntry> =
         readRaw()[fileName].orEmpty()
             .mapNotNull { (blockId, entries) ->
-                entries.latestOnDate(date)?.toDayEntry()?.let { blockId to it }
+                entries.latestStatusOnDate(date)?.toDayEntry()?.let { blockId to it }
             }
             .toMap()
 
@@ -104,15 +104,25 @@ class PracticeLogStore @Inject constructor(
         writeRaw(all)
     }
 
+    fun hasAnyEntryOnDate(
+        fileName: String,
+        blockId: String,
+        date: LocalDate = LocalDate.now(),
+    ): Boolean =
+        readRaw()[fileName]?.get(blockId)?.any { it.recordedOn(date, zoneId) } == true
+
     fun hasAnyEntry(fileName: String, blockId: String): Boolean =
         readRaw()[fileName]?.get(blockId)?.isNotEmpty() == true
 
     private fun latestEntryOnDate(fileName: String, blockId: String, date: LocalDate): PracticeLogEntryDto? =
-        readRaw()[fileName]?.get(blockId)?.latestOnDate(date)
+        readRaw()[fileName]?.get(blockId)?.latestStatusOnDate(date)
 
-    private fun List<PracticeLogEntryDto>.latestOnDate(date: LocalDate): PracticeLogEntryDto? =
-        filter { it.recordedOn(date, zoneId) }
+    private fun List<PracticeLogEntryDto>.latestStatusOnDate(date: LocalDate): PracticeLogEntryDto? =
+        filter { it.recordedOn(date, zoneId) && it.isStatusEvent() }
             .maxByOrNull { it.recordedAtInstant() }
+
+    private fun PracticeLogEntryDto.isStatusEvent(): Boolean =
+        event == PracticeEvent.FOLLOWED.name || event == PracticeEvent.VIOLATED.name
 
     private fun readRaw(): Map<String, Map<String, MutableList<PracticeLogEntryDto>>> {
         val file = logFile

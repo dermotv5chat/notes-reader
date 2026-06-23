@@ -5,6 +5,7 @@ import java.time.Instant
 enum class PracticeEvent {
     FOLLOWED,
     VIOLATED,
+    COMMENT,
 }
 
 /** Latest practice summary for a block on a given day (used for status dots). */

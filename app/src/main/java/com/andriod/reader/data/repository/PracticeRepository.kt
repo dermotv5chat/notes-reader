@@ -46,4 +46,10 @@ class PracticeRepository @Inject constructor(
     fun clearTodayEntry(fileName: String, blockId: String, date: LocalDate = LocalDate.now()) {
         practiceLogStore.clearTodayEntry(fileName, blockId, date)
     }
+
+    fun hasAnyEntryOnDate(
+        fileName: String,
+        blockId: String,
+        date: LocalDate = LocalDate.now(),
+    ): Boolean = practiceLogStore.hasAnyEntryOnDate(fileName, blockId, date)
 }
