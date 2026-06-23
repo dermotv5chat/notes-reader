@@ -32,7 +32,7 @@ sealed class NoteBlock {
         val checked: Boolean,
         val text: String,
     ) : NoteBlock() {
-        override val trackable: Boolean = true
+        override val trackable: Boolean = false
     }
 
     data class Callout(

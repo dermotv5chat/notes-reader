@@ -32,7 +32,7 @@ class MarkdownBlockParserTest {
         block as NoteBlock.Todo
         assertEquals(false, block.checked)
         assertEquals("11 点睡觉", block.text)
-        assertTrue(block.trackable)
+        assertEquals(false, block.trackable)
     }
 
     @Test

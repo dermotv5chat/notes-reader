@@ -20,10 +20,10 @@ object PrinciplesGuideContent {
         GuideSection(
             title = "哪些块可点击",
             paragraphs = listOf(
-                "- [ ] / - [x] 待办行（工具栏「待办」）",
+                "- [ ] / - [x] 待办行：仅展示，不记录践行（工具栏「待办」）",
                 "> [!rule] 准则 Callout（工具栏「准则」）",
                 "> [!habit] 习惯 Callout（工具栏「习惯」）",
-                "普通段落、标题、普通列表项暂不可点击。",
+                "普通段落、标题、普通列表项不可点击。",
             ),
         ),
         GuideSection(

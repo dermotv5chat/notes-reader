@@ -451,6 +451,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun onTrackableBlockClick(block: NoteBlock) {
+        if (!block.trackable) return
         val note = _uiState.value.note ?: return
         val existing = practiceRepository.getTodayEntry(note.fileName, block.id)
         _uiState.update {
