@@ -96,6 +96,14 @@ object PrinciplesGuideContent {
             ),
         ),
         GuideSection(
+            title = "历史记录",
+            paragraphs = listOf(
+                "点击准则块后，弹窗内可展开「历史记录」查看（时间、遵守/违背、备注），默认收起。",
+                "每次点「遵守」或「违背」都会追加一条，同一天可有多条；块旁圆点取今日最新一条。",
+                "展开历史后，列表下方可「清除今日记录」（需二次确认），会删掉该准则今天的全部条目。",
+            ),
+        ),
+        GuideSection(
             title = "数据与同步",
             paragraphs = listOf(
                 "准则正文：notes/*.md，会同步 GitHub。",

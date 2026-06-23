@@ -3,11 +3,16 @@ package com.andriod.reader.data.local
 import android.content.Context
 import com.andriod.reader.domain.PracticeDayEntry
 import com.andriod.reader.domain.PracticeEvent
+import com.andriod.reader.domain.PracticeLogEntry
 import com.google.gson.Gson
+import com.google.gson.JsonElement
+import com.google.gson.JsonParser
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -16,42 +21,48 @@ class PracticeLogStore @Inject constructor(
     @ApplicationContext private val context: Context,
     private val gson: Gson,
 ) {
+    private val zoneId: ZoneId = ZoneId.systemDefault()
+
     private val metaDir: File
         get() = File(context.filesDir, ".meta").also { it.mkdirs() }
 
     private val logFile: File
         get() = File(metaDir, "practice-logs.json")
 
-    fun getTodayEntry(fileName: String, blockId: String, date: LocalDate = LocalDate.now()): PracticeDayEntry? {
-        val dto = readRaw()[fileName]?.get(blockId)?.get(date.toString()) ?: return null
-        return dto.toEntry()
-    }
+    fun getTodayEntry(fileName: String, blockId: String, date: LocalDate = LocalDate.now()): PracticeDayEntry? =
+        latestEntryOnDate(fileName, blockId, date)?.toDayEntry()
 
     fun getTodayEntriesForNote(
         fileName: String,
         date: LocalDate = LocalDate.now(),
-    ): Map<String, PracticeDayEntry> {
-        val dateKey = date.toString()
-        return readRaw()[fileName].orEmpty()
-            .mapNotNull { (blockId, days) ->
-                days[dateKey]?.toEntry()?.let { blockId to it }
+    ): Map<String, PracticeDayEntry> =
+        readRaw()[fileName].orEmpty()
+            .mapNotNull { (blockId, entries) ->
+                entries.latestOnDate(date)?.toDayEntry()?.let { blockId to it }
             }
             .toMap()
-    }
 
-    fun saveTodayEntry(
+    fun getHistoryForBlock(fileName: String, blockId: String): List<PracticeLogEntry> =
+        readRaw()[fileName]?.get(blockId).orEmpty()
+            .mapNotNull { it.toEntry() }
+            .sortedByDescending { it.recordedAt }
+
+    fun appendEntry(
         fileName: String,
         blockId: String,
         event: PracticeEvent,
         note: String = "",
-        date: LocalDate = LocalDate.now(),
+        recordedAt: Instant = Instant.now(),
     ) {
         val all = readRaw().toMutableMap()
         val noteLogs = all.getOrPut(fileName) { mutableMapOf() }.toMutableMap()
-        val blockLogs = noteLogs.getOrPut(blockId) { mutableMapOf() }.toMutableMap()
-        blockLogs[date.toString()] = PracticeDayEntryDto(
-            event = event.name,
-            note = note,
+        val blockLogs = noteLogs.getOrPut(blockId) { mutableListOf() }.toMutableList()
+        blockLogs.add(
+            PracticeLogEntryDto(
+                event = event.name,
+                note = note,
+                recordedAt = recordedAt.toString(),
+            ),
         )
         noteLogs[blockId] = blockLogs
         all[fileName] = noteLogs
@@ -65,12 +76,12 @@ class PracticeLogStore @Inject constructor(
     ) {
         val all = readRaw().toMutableMap()
         val noteLogs = all[fileName]?.toMutableMap() ?: return
-        val blockLogs = noteLogs[blockId]?.toMutableMap() ?: return
-        blockLogs.remove(date.toString())
-        if (blockLogs.isEmpty()) {
+        val blockLogs = noteLogs[blockId]?.toMutableList() ?: return
+        val remaining = blockLogs.filterNot { it.recordedOn(date, zoneId) }
+        if (remaining.isEmpty()) {
             noteLogs.remove(blockId)
         } else {
-            noteLogs[blockId] = blockLogs
+            noteLogs[blockId] = remaining.toMutableList()
         }
         if (noteLogs.isEmpty()) {
             all.remove(fileName)
@@ -85,8 +96,9 @@ class PracticeLogStore @Inject constructor(
         val all = readRaw().toMutableMap()
         val noteLogs = all[fileName]?.toMutableMap() ?: return
         val oldEntries = noteLogs.remove(oldId) ?: return
-        val merged = noteLogs.getOrPut(newId) { mutableMapOf() }.toMutableMap()
-        oldEntries.forEach { (date, dto) -> merged[date] = dto }
+        val merged = (noteLogs.getOrPut(newId) { mutableListOf() } + oldEntries)
+            .sortedBy { it.recordedAtInstant() }
+            .toMutableList()
         noteLogs[newId] = merged
         all[fileName] = noteLogs
         writeRaw(all)
@@ -95,24 +107,80 @@ class PracticeLogStore @Inject constructor(
     fun hasAnyEntry(fileName: String, blockId: String): Boolean =
         readRaw()[fileName]?.get(blockId)?.isNotEmpty() == true
 
-    private fun readRaw(): Map<String, Map<String, Map<String, PracticeDayEntryDto>>> {
+    private fun latestEntryOnDate(fileName: String, blockId: String, date: LocalDate): PracticeLogEntryDto? =
+        readRaw()[fileName]?.get(blockId)?.latestOnDate(date)
+
+    private fun List<PracticeLogEntryDto>.latestOnDate(date: LocalDate): PracticeLogEntryDto? =
+        filter { it.recordedOn(date, zoneId) }
+            .maxByOrNull { it.recordedAtInstant() }
+
+    private fun readRaw(): Map<String, Map<String, MutableList<PracticeLogEntryDto>>> {
         val file = logFile
         if (!file.exists()) return emptyMap()
-        val type = object : TypeToken<Map<String, Map<String, Map<String, PracticeDayEntryDto>>>>() {}.type
-        return gson.fromJson(file.readText(), type) ?: emptyMap()
+        val root = JsonParser.parseString(file.readText()).asJsonObject
+        var migrated = false
+        val result = mutableMapOf<String, MutableMap<String, MutableList<PracticeLogEntryDto>>>()
+        root.entrySet().forEach { (fileName, blocksEl) ->
+            val blocks = mutableMapOf<String, MutableList<PracticeLogEntryDto>>()
+            blocksEl.asJsonObject.entrySet().forEach { (blockId, entriesEl) ->
+                val (entries, wasLegacy) = parseBlockLogs(entriesEl)
+                if (wasLegacy) migrated = true
+                blocks[blockId] = entries.toMutableList()
+            }
+            result[fileName] = blocks
+        }
+        if (migrated) {
+            writeRaw(result)
+        }
+        return result
     }
 
-    private fun writeRaw(data: Map<String, Map<String, Map<String, PracticeDayEntryDto>>>) {
+    private fun parseBlockLogs(element: JsonElement): Pair<List<PracticeLogEntryDto>, Boolean> {
+        if (element.isJsonArray) {
+            val type = object : TypeToken<List<PracticeLogEntryDto>>() {}.type
+            return (gson.fromJson<List<PracticeLogEntryDto>>(element, type) ?: emptyList()) to false
+        }
+        if (!element.isJsonObject) return emptyList<PracticeLogEntryDto>() to false
+        val legacy = element.asJsonObject.entrySet().mapNotNull { (dateKey, entryEl) ->
+            runCatching {
+                val dto = gson.fromJson(entryEl, LegacyDayEntryDto::class.java)
+                val date = LocalDate.parse(dateKey)
+                val instant = date.atTime(12, 0).atZone(zoneId).toInstant()
+                PracticeLogEntryDto(
+                    event = dto.event,
+                    note = dto.note,
+                    recordedAt = instant.toString(),
+                )
+            }.getOrNull()
+        }
+        return legacy to true
+    }
+
+    private fun writeRaw(data: Map<String, Map<String, MutableList<PracticeLogEntryDto>>>) {
         logFile.writeText(gson.toJson(data))
     }
 
-    private data class PracticeDayEntryDto(
+    private data class LegacyDayEntryDto(
         val event: String,
         val note: String = "",
+    )
+
+    private data class PracticeLogEntryDto(
+        val event: String,
+        val note: String = "",
+        val recordedAt: String,
     ) {
-        fun toEntry(): PracticeDayEntry? =
+        fun recordedAtInstant(): Instant = Instant.parse(recordedAt)
+
+        fun recordedOn(date: LocalDate, zoneId: ZoneId): Boolean =
+            recordedAtInstant().atZone(zoneId).toLocalDate() == date
+
+        fun toEntry(): PracticeLogEntry? =
             runCatching { PracticeEvent.valueOf(event) }
                 .getOrNull()
-                ?.let { PracticeDayEntry(event = it, note = note) }
+                ?.let { PracticeLogEntry(event = it, note = note, recordedAt = recordedAtInstant()) }
+
+        fun toDayEntry(): PracticeDayEntry? =
+            toEntry()?.let { PracticeDayEntry(event = it.event, note = it.note) }
     }
 }

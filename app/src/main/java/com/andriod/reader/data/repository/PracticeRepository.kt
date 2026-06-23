@@ -7,6 +7,8 @@ import com.andriod.reader.data.local.PracticeLogStore
 import com.andriod.reader.domain.NoteBlock
 import com.andriod.reader.domain.PracticeDayEntry
 import com.andriod.reader.domain.PracticeEvent
+import com.andriod.reader.domain.PracticeLogEntry
+import java.time.Instant
 import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,14 +30,17 @@ class PracticeRepository @Inject constructor(
     fun getTodayEntriesForNote(fileName: String, date: LocalDate = LocalDate.now()): Map<String, PracticeDayEntry> =
         practiceLogStore.getTodayEntriesForNote(fileName, date)
 
-    fun saveTodayEntry(
+    fun getBlockHistory(fileName: String, blockId: String): List<PracticeLogEntry> =
+        practiceLogStore.getHistoryForBlock(fileName, blockId)
+
+    fun appendEntry(
         fileName: String,
         blockId: String,
         event: PracticeEvent,
         note: String = "",
-        date: LocalDate = LocalDate.now(),
+        recordedAt: Instant = Instant.now(),
     ) {
-        practiceLogStore.saveTodayEntry(fileName, blockId, event, note, date)
+        practiceLogStore.appendEntry(fileName, blockId, event, note, recordedAt)
     }
 
     fun clearTodayEntry(fileName: String, blockId: String, date: LocalDate = LocalDate.now()) {

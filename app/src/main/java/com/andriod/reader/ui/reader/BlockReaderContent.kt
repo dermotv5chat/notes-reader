@@ -15,14 +15,20 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,10 +43,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.andriod.reader.domain.NoteBlock
 import com.andriod.reader.domain.PracticeDayEntry
 import com.andriod.reader.domain.PracticeEvent
+import com.andriod.reader.domain.PracticeLogEntry
 import com.andriod.reader.domain.shouldDisplayInReader
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun BlockReaderContent(
@@ -186,8 +197,8 @@ private fun PracticeStatusDot(todayEntry: PracticeDayEntry?) {
 data class PracticeSheetState(
     val blockId: String,
     val blockLabel: String,
-    val existingNote: String = "",
-    val existingEvent: PracticeEvent? = null,
+    val hasTodayEntry: Boolean = false,
+    val history: List<PracticeLogEntry> = emptyList(),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -220,12 +231,50 @@ internal fun PracticeSheetContent(
     onClear: () -> Unit,
 ) {
     var note by remember(sheetState.blockId) {
-        mutableStateOf(sheetState.existingNote)
+        mutableStateOf("")
+    }
+    var showClearConfirm by remember(sheetState.blockId) {
+        mutableStateOf(false)
+    }
+    var historyExpanded by remember(sheetState.blockId) {
+        mutableStateOf(false)
+    }
+
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = {
+                Text(
+                    text = "清除今日记录？",
+                    modifier = Modifier.testTag(PracticeSheetTestTags.CLEAR_CONFIRM_DIALOG),
+                )
+            },
+            text = {
+                Text("将删除该准则今天的全部践行记录，此操作不可恢复。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearConfirm = false
+                        onClear()
+                    },
+                    modifier = Modifier.testTag(PracticeSheetTestTags.CLEAR_CONFIRM_BUTTON),
+                ) {
+                    Text("清除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirm = false }) {
+                    Text("取消")
+                }
+            },
+        )
     }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp)
             .padding(bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -278,15 +327,128 @@ internal fun PracticeSheetContent(
             minLines = 2,
         )
 
-        if (sheetState.existingEvent != null) {
-            OutlinedButton(
-                onClick = onClear,
-                modifier = Modifier.fillMaxWidth(),
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable { historyExpanded = !historyExpanded }
+                    .padding(vertical = 4.dp)
+                    .testTag(PracticeSheetTestTags.HISTORY_SECTION),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("清除今日记录")
+                Text(
+                    text = "历史记录（${sheetState.history.size} 条）",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Icon(
+                    imageVector = if (historyExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = if (historyExpanded) "收起历史" else "展开历史",
+                    modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_TOGGLE),
+                )
+            }
+
+            if (historyExpanded) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (sheetState.history.isEmpty()) {
+                        Text(
+                            text = "暂无记录",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_EMPTY),
+                        )
+                    } else {
+                        sheetState.history.forEachIndexed { index, entry ->
+                            PracticeHistoryRow(
+                                entry = entry,
+                                modifier = if (index == 0) {
+                                    Modifier.testTag(PracticeSheetTestTags.HISTORY_ITEM)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                        }
+                    }
+
+                    if (sheetState.hasTodayEntry) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(top = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        )
+                        TextButton(
+                            onClick = { showClearConfirm = true },
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .testTag(PracticeSheetTestTags.CLEAR_TODAY_BUTTON),
+                        ) {
+                            Text(
+                                text = "清除今日记录",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun PracticeHistoryRow(
+    entry: PracticeLogEntry,
+    modifier: Modifier = Modifier,
+) {
+    val eventLabel = when (entry.event) {
+        PracticeEvent.FOLLOWED -> "遵守"
+        PracticeEvent.VIOLATED -> "违背"
+    }
+    val eventColor = when (entry.event) {
+        PracticeEvent.FOLLOWED -> MaterialTheme.colorScheme.primary
+        PracticeEvent.VIOLATED -> MaterialTheme.colorScheme.error
+    }
+    val timeLabel = formatPracticeTime(entry)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = timeLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = eventLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = eventColor,
+            )
+        }
+        if (entry.note.isNotBlank()) {
+            Text(
+                text = entry.note,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+internal fun formatPracticeTime(entry: PracticeLogEntry): String {
+    val formatter = DateTimeFormatter.ofPattern("M月d日 HH:mm")
+    return entry.recordedAt.atZone(ZoneId.systemDefault()).format(formatter)
 }
 
 fun NoteBlock.displayLabel(): String = when (this) {

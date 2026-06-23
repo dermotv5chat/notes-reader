@@ -13,6 +13,7 @@ class PrinciplesGuideContentTest {
         assertTrue(titles.contains("[!rule] 与 [!habit]"))
         assertTrue(titles.contains("一行一条准则"))
         assertTrue(titles.contains("隐式块 ID"))
+        assertTrue(titles.contains("历史记录"))
     }
 
     @Test
@@ -23,5 +24,6 @@ class PrinciplesGuideContentTest {
         assertTrue(body.contains("GitHub"))
         assertTrue(body.contains(".meta"))
         assertTrue(body.contains("自动折行"))
+        assertTrue(body.contains("历史记录"))
     }
 }

@@ -454,13 +454,14 @@ class ReaderViewModel @Inject constructor(
         if (!block.trackable) return
         val note = _uiState.value.note ?: return
         val existing = practiceRepository.getTodayEntry(note.fileName, block.id)
+        val history = practiceRepository.getBlockHistory(note.fileName, block.id)
         _uiState.update {
             it.copy(
                 practiceSheet = PracticeSheetState(
                     blockId = block.id,
                     blockLabel = block.displayLabel(),
-                    existingNote = existing?.note.orEmpty(),
-                    existingEvent = existing?.event,
+                    hasTodayEntry = existing != null,
+                    history = history,
                 ),
             )
         }
@@ -473,7 +474,7 @@ class ReaderViewModel @Inject constructor(
     fun savePractice(event: PracticeEvent, note: String) {
         val sheet = _uiState.value.practiceSheet ?: return
         val file = _uiState.value.note?.fileName ?: return
-        practiceRepository.saveTodayEntry(
+        practiceRepository.appendEntry(
             fileName = file,
             blockId = sheet.blockId,
             event = event,
