@@ -48,7 +48,9 @@ object PrinciplesGuideContent {
 
                 # 沟通
 
-                > [!rule] 别轻易跟旁边人诉苦
+                > [!rule] 别轻易跟旁边人诉苦，未必被理解，还可能引发矛盾
+
+                > [!rule] 行动才是解决焦虑的方法
             """.trimIndent(),
         ),
         GuideSection(
@@ -56,8 +58,8 @@ object PrinciplesGuideContent {
             paragraphs = listOf(
                 "二者是 Markdown 待办，写在笔记里，会 GitHub 同步。",
                 "[ ] 显示为 ☐，表示清单未完成；[x] 显示为 ☑（删除线），表示清单已完成或已内化。",
-                "与「今日遵守/违背」不是一回事：绿/红点是点块记录的践行，存在本机 .meta，不是改 [ ]/[x]。",
-                "[ ] 与 [x] 都可以点击记录今日践行。",
+                "与「今日遵守/违背」不是一回事：绿/红点是点准则 Callout 记录的践行，存在本机 .meta。",
+                "待办 [ ] / [x] 不能点击记录践行。",
             ),
         ),
         GuideSection(
@@ -70,17 +72,34 @@ object PrinciplesGuideContent {
             ),
         ),
         GuideSection(
-            title = "可选：行末 ^id",
+            title = "一行一条准则",
             paragraphs = listOf(
-                "例如 > [!habit] 11 点睡觉 ^sleep11",
-                "改措辞后践行记录仍绑定同一条；不写时 App 自动生成 ID。",
+                "App 按 Markdown 文件里的换行（按回车）拆块，不是按屏幕显示行数。",
+                "准则写在一行里时，即使阅读页自动折成多行显示，仍算 1 个块、1 个践行圆点。",
+                "若在准则中间按回车，下一行没有 > [!rule] 或 > [!habit] 前缀，会变成普通段落，不能点践行。",
+                "建议：一条准则占一行；文字可以很长，界面会自动折行，无需手动换行。",
+            ),
+            codeExample = """
+                # 正确：一行，界面自动折行仍是一个块
+                > [!rule] 别轻易跟旁边人诉苦，未必被理解，还可能引发矛盾
+
+                # 不推荐：中间回车会变成两个块（第二行不可点践行）
+                > [!rule] 别轻易跟旁边人诉苦
+                未必被理解，还可能引发矛盾
+            """.trimIndent(),
+        ),
+        GuideSection(
+            title = "隐式块 ID",
+            paragraphs = listOf(
+                "每个准则块在 App 内自动分配 ID，存在 .meta/block-registry.json。",
+                "Markdown 正文中不会出现 ID；只改准则文字时，践行圆点不会丢。",
             ),
         ),
         GuideSection(
             title = "数据与同步",
             paragraphs = listOf(
                 "准则正文：notes/*.md，会同步 GitHub。",
-                "今日践行：.meta/practice-logs.json，仅本机。",
+                "块 ID 与今日践行：.meta/ 下仅本机，不同步 GitHub。",
             ),
         ),
     )

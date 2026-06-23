@@ -10,14 +10,27 @@ object MarkdownBlockParser {
     private val bulletRegex = Regex("""^-\s+(.*)$""")
     private val calloutRegex = Regex("""^>\s*\[!([^\]|]+)(?:\|([^\]]+))?\]\s*(.*)$""")
 
-    fun parse(content: String, fileName: String): List<NoteBlock> =
-        content.split('\n').mapIndexed { index, rawLine ->
-            parseLine(fileName, index, rawLine)
+    fun parse(content: String, fileName: String, calloutIds: List<String>): List<NoteBlock> {
+        var calloutIndex = 0
+        return content.split('\n').mapIndexed { index, rawLine ->
+            val id = if (CalloutLineParser.parseCallout(rawLine) != null) {
+                calloutIds[calloutIndex++]
+            } else {
+                BlockIdResolver.resolve(fileName, index, rawLine)
+            }
+            parseLineWithId(fileName, index, rawLine, id)
         }
+    }
 
-    internal fun parseLine(fileName: String, lineIndex: Int, rawLine: String): NoteBlock {
-        val id = BlockIdResolver.resolve(fileName, lineIndex, rawLine)
+    internal fun parseLine(fileName: String, lineIndex: Int, rawLine: String): NoteBlock =
+        parseLineWithId(fileName, lineIndex, rawLine, BlockIdResolver.resolve(fileName, lineIndex, rawLine))
 
+    internal fun parseLineWithId(
+        fileName: String,
+        lineIndex: Int,
+        rawLine: String,
+        id: String,
+    ): NoteBlock {
         headingRegex.find(rawLine)?.let { match ->
             return NoteBlock.Heading(
                 id = id,

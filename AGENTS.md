@@ -39,6 +39,7 @@ filesDir/
 └── .meta/
     ├── sync-state.json       # 每文件 githubSha、remotePath、syncStatus、pendingDelete
     ├── practice-logs.json    # 行为准则践行记录（不同步 GitHub）
+    ├── block-registry.json # 准则块隐式 ID（不同步 GitHub）
     └── folders.json          # 虚拟文件夹
 ```
 

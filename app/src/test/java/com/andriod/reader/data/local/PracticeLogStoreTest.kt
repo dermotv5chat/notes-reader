@@ -70,4 +70,12 @@ class PracticeLogStoreTest {
         assertEquals(PracticeEvent.VIOLATED, entry?.event)
         assertEquals("熬夜", entry?.note)
     }
+
+    @Test
+    fun migrateBlockId_movesEntriesToNewKey() {
+        store.saveTodayEntry(fileName, "note.md#line:2", PracticeEvent.FOLLOWED, date = today)
+        store.migrateBlockId(fileName, "note.md#line:2", "note.md^b2")
+        assertNull(store.getTodayEntry(fileName, "note.md#line:2", today))
+        assertEquals(PracticeEvent.FOLLOWED, store.getTodayEntry(fileName, "note.md^b2", today)?.event)
+    }
 }

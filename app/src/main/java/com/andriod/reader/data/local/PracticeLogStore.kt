@@ -80,6 +80,21 @@ class PracticeLogStore @Inject constructor(
         writeRaw(all)
     }
 
+    fun migrateBlockId(fileName: String, oldId: String, newId: String) {
+        if (oldId == newId) return
+        val all = readRaw().toMutableMap()
+        val noteLogs = all[fileName]?.toMutableMap() ?: return
+        val oldEntries = noteLogs.remove(oldId) ?: return
+        val merged = noteLogs.getOrPut(newId) { mutableMapOf() }.toMutableMap()
+        oldEntries.forEach { (date, dto) -> merged[date] = dto }
+        noteLogs[newId] = merged
+        all[fileName] = noteLogs
+        writeRaw(all)
+    }
+
+    fun hasAnyEntry(fileName: String, blockId: String): Boolean =
+        readRaw()[fileName]?.get(blockId)?.isNotEmpty() == true
+
     private fun readRaw(): Map<String, Map<String, Map<String, PracticeDayEntryDto>>> {
         val file = logFile
         if (!file.exists()) return emptyMap()

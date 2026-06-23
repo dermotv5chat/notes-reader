@@ -11,6 +11,8 @@ class PrinciplesGuideContentTest {
         assertTrue(titles.contains("哪些块可点击"))
         assertTrue(titles.contains("- [ ] 与 - [x]"))
         assertTrue(titles.contains("[!rule] 与 [!habit]"))
+        assertTrue(titles.contains("一行一条准则"))
+        assertTrue(titles.contains("隐式块 ID"))
     }
 
     @Test
@@ -20,5 +22,6 @@ class PrinciplesGuideContentTest {
         assertTrue(body.contains("准则"))
         assertTrue(body.contains("GitHub"))
         assertTrue(body.contains(".meta"))
+        assertTrue(body.contains("自动折行"))
     }
 }

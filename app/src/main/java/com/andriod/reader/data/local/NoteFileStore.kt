@@ -61,7 +61,8 @@ class NoteFileStore @Inject constructor(
 
     fun saveNote(note: Note): Note {
         val file = resolveFile(note.fileName)
-        val updated = note.copy(updatedAt = Instant.now())
+        val cleanedContent = MarkdownCalloutCleaner.stripLegacyAnchors(note.content)
+        val updated = note.copy(content = cleanedContent, updatedAt = Instant.now())
         file.parentFile?.mkdirs()
         file.writeText(MarkdownParser.serialize(updated))
 
@@ -77,6 +78,18 @@ class NoteFileStore @Inject constructor(
         )
         syncStateStore.writeAll(states)
         return updated.copy(syncStatus = newStatus)
+    }
+
+    /** Replace one line without changing title/front matter. */
+    fun updateRawLine(fileName: String, lineIndex: Int, newLine: String) {
+        val file = resolveFile(fileName)
+        if (!file.exists()) return
+        val body = MarkdownParser.parse(fileName, file.readText()).content
+        val lines = body.split('\n').toMutableList()
+        if (lineIndex !in lines.indices) return
+        lines[lineIndex] = newLine
+        val note = getNote(fileName) ?: return
+        saveNote(note.copy(content = lines.joinToString("\n")))
     }
 
     fun createNote(title: String, content: String, parentFolder: String = ""): Note {

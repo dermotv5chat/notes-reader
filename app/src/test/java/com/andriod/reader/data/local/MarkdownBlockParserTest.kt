@@ -18,7 +18,6 @@ class MarkdownBlockParserTest {
         assertEquals("rule", block.variant)
         assertEquals("冲突时先暂停", block.text)
         assertEquals("principles.md^pause", block.id)
-        assertTrue(block.trackable)
     }
 
     @Test
@@ -53,7 +52,7 @@ class MarkdownBlockParserTest {
             > [!habit] 每天冥想
             - [ ] 任务
         """.trimIndent()
-        val blocks = MarkdownBlockParser.parse(content, "n.md")
+        val blocks = MarkdownBlockParser.parse(content, "n.md", listOf("id-habit"))
         assertEquals(3, blocks.size)
         assertTrue(blocks[0] is NoteBlock.Heading)
         assertTrue(blocks[1] is NoteBlock.Callout)

@@ -29,7 +29,7 @@ class NoteBlockDisplayTest {
     @Test
     fun parse_filtersBlankLinesForDisplay() {
         val content = "# 标题\n\n> [!rule] 准则\n\n"
-        val visible = MarkdownBlockParser.parse(content, "n.md").filter { it.shouldDisplayInReader() }
+        val visible = MarkdownBlockParser.parse(content, "n.md", listOf("callout-id")).filter { it.shouldDisplayInReader() }
         assertEquals(2, visible.size)
     }
 }

@@ -1,5 +1,7 @@
 package com.andriod.reader.data.repository
 
+import com.andriod.reader.data.local.BlockRegistry
+import com.andriod.reader.data.local.CalloutLineParser
 import com.andriod.reader.data.local.MarkdownBlockParser
 import com.andriod.reader.data.local.PracticeLogStore
 import com.andriod.reader.domain.NoteBlock
@@ -12,9 +14,13 @@ import javax.inject.Singleton
 @Singleton
 class PracticeRepository @Inject constructor(
     private val practiceLogStore: PracticeLogStore,
+    private val blockRegistry: BlockRegistry,
 ) {
-    fun parseBlocks(content: String, fileName: String): List<NoteBlock> =
-        MarkdownBlockParser.parse(content, fileName)
+    fun parseBlocks(content: String, fileName: String): List<NoteBlock> {
+        val callouts = CalloutLineParser.extractCallouts(content)
+        val calloutIds = blockRegistry.resolveCalloutIds(fileName, callouts)
+        return MarkdownBlockParser.parse(content, fileName, calloutIds)
+    }
 
     fun getTodayEntry(fileName: String, blockId: String, date: LocalDate = LocalDate.now()): PracticeDayEntry? =
         practiceLogStore.getTodayEntry(fileName, blockId, date)
