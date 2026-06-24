@@ -10,7 +10,7 @@
 - iOS 风格编辑：自动保存、格式工具栏、撤销/重做
 - 阅读页 Markdown 渲染；朗读前自动剥离格式符号
 - 手动上传/下载到 GitHub 仓库 [dermotv5chat/notes](https://github.com/dermotv5chat/notes)；上传冲突（409/404）排查见 [docs/github-sync-upload-conflict.md](docs/github-sync-upload-conflict.md)
-- TTS 朗读笔记：语音选择、语速调节、分段播放；自然度方案见 [docs/tts-natural-voice-options.md](docs/tts-natural-voice-options.md)
+- TTS 朗读笔记：语音选择、语速调节、分段播放；**播放列表**（多篇连播、单曲/列表循环）见阅读页与迷你播放条；自然度方案见 [docs/tts-natural-voice-options.md](docs/tts-natural-voice-options.md)
 - **行为准则（P1）**：Callout 块可点击，记录今日遵守或违背；普通待办仅展示；详见 [docs/principles-guide.md](docs/principles-guide.md)
 
 详见 [CHANGELOG.md](CHANGELOG.md)。安装到手机见 [docs/install-to-device.md](docs/install-to-device.md)。

@@ -3,6 +3,11 @@ package com.andriod.reader.ui.settings
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andriod.reader.data.local.AppDiagnosticLog
+import com.andriod.reader.data.local.AppStorageAnalyzer
+import com.andriod.reader.data.local.AppStorageCleaner
+import com.andriod.reader.data.local.DiagnosticLogExporter
+import com.andriod.reader.data.local.StorageCategory
 import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.data.repository.SyncRepository
 import com.andriod.reader.domain.GitHubSettings
@@ -19,7 +24,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -44,6 +51,15 @@ data class SettingsUiState(
     val speechBackend: TtsSpeechBackend = TtsSpeechBackend.SYSTEM,
     val qualityGuide: String? = null,
     val voicePickerExpanded: Boolean = false,
+    val logLineCount: Int = 0,
+    val logSizeBytes: Long = 0,
+    val isExportingLog: Boolean = false,
+    val isClearingLog: Boolean = false,
+    val storageCategories: List<StorageCategory> = emptyList(),
+    val storageTotalBytes: Long = 0,
+    val selectedStorageIds: Set<String> = emptySet(),
+    val isAnalyzingStorage: Boolean = false,
+    val isCleaningStorage: Boolean = false,
 )
 
 @HiltViewModel
@@ -51,6 +67,10 @@ class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val settingsStore: SettingsStore,
     private val syncRepository: SyncRepository,
+    private val diagnosticLog: AppDiagnosticLog,
+    private val diagnosticLogExporter: DiagnosticLogExporter,
+    private val storageAnalyzer: AppStorageAnalyzer,
+    private val storageCleaner: AppStorageCleaner,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(loadState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -257,5 +277,108 @@ class SettingsViewModel @Inject constructor(
 
     fun clearTestMessage() {
         _uiState.update { it.copy(testMessage = null) }
+    }
+
+    fun refreshLogStats() {
+        val stats = diagnosticLog.stats()
+        _uiState.update {
+            it.copy(logLineCount = stats.lineCount, logSizeBytes = stats.sizeBytes)
+        }
+    }
+
+    fun refreshStorageStats() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAnalyzingStorage = true) }
+            val breakdown = withContext(Dispatchers.IO) { storageAnalyzer.analyze() }
+            _uiState.update { state ->
+                val defaultSelected = breakdown.categories
+                    .filter { it.cleanable && it.sizeBytes > 0 }
+                    .map { it.id }
+                    .toSet()
+                val selected = if (state.selectedStorageIds.isEmpty() && defaultSelected.isNotEmpty()) {
+                    defaultSelected
+                } else {
+                    state.selectedStorageIds.intersect(
+                        breakdown.categories.filter { it.cleanable }.map { it.id }.toSet(),
+                    )
+                }
+                state.copy(
+                    storageCategories = breakdown.categories,
+                    storageTotalBytes = breakdown.totalBytes,
+                    selectedStorageIds = selected,
+                    isAnalyzingStorage = false,
+                )
+            }
+            refreshLogStats()
+        }
+    }
+
+    fun toggleStorageSelection(id: String) {
+        _uiState.update { state ->
+            val selected = state.selectedStorageIds.toMutableSet()
+            if (id in selected) {
+                selected.remove(id)
+            } else {
+                selected.add(id)
+            }
+            state.copy(selectedStorageIds = selected)
+        }
+    }
+
+    fun cleanSelectedStorage() {
+        val selected = _uiState.value.selectedStorageIds
+        if (selected.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isCleaningStorage = true) }
+            val result = withContext(Dispatchers.IO) {
+                storageCleaner.clean(selected)
+            }
+            refreshStorageStats()
+            val freedMb = result.freedBytes / (1024.0 * 1024.0)
+            val message = when {
+                result.failedIds.isNotEmpty() && result.cleanedIds.isEmpty() ->
+                    "清理失败，请稍后重试"
+                result.failedIds.isNotEmpty() ->
+                    "部分清理完成，已释放 ${"%.2f".format(freedMb)} MB"
+                freedMb >= 0.01 ->
+                    "已释放 ${"%.2f".format(freedMb)} MB"
+                else ->
+                    "已清理选中项"
+            }
+            _uiState.update {
+                it.copy(isCleaningStorage = false, testMessage = message)
+            }
+        }
+    }
+
+    fun exportDiagnosticLog() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isExportingLog = true) }
+            val message = withContext(Dispatchers.IO) {
+                diagnosticLogExporter.export()
+                    .fold(
+                        onSuccess = { path -> "日志已保存：$path" },
+                        onFailure = { error -> "导出失败：${error.message ?: "未知错误"}" },
+                    )
+            }
+            refreshLogStats()
+            _uiState.update {
+                it.copy(isExportingLog = false, testMessage = message)
+            }
+        }
+    }
+
+    fun clearDiagnosticLog() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isClearingLog = true) }
+            withContext(Dispatchers.IO) {
+                diagnosticLog.clear()
+            }
+            refreshLogStats()
+            refreshStorageStats()
+            _uiState.update {
+                it.copy(isClearingLog = false, testMessage = "已清除诊断日志")
+            }
+        }
     }
 }

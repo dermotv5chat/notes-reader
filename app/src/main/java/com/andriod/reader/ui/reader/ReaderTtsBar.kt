@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -49,6 +50,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.andriod.reader.ui.tts.TtsVoiceSettingsSection
+import com.andriod.reader.domain.TtsQueueRepeatMode
 import com.andriod.reader.service.SleepTimerDisplay
 import com.andriod.reader.service.SleepTimerMode
 
@@ -58,7 +60,8 @@ fun ReaderPlaybackBar(
     onTogglePlayPause: () -> Unit,
     onStop: () -> Unit,
     onNextSegment: () -> Unit,
-    onToggleLoop: () -> Unit,
+    onCycleRepeatMode: () -> Unit,
+    onOpenQueue: () -> Unit,
     onOpenTtsSettings: () -> Unit,
     onOpenSleepTimer: () -> Unit,
     onOpenNotificationSettings: () -> Unit = {},
@@ -143,15 +146,29 @@ fun ReaderPlaybackBar(
             IconButton(onClick = onNextSegment, enabled = uiState.isTtsReady) {
                 Icon(Icons.Default.SkipNext, contentDescription = "下一段")
             }
-            IconButton(onClick = onToggleLoop, enabled = uiState.isTtsReady) {
+            IconButton(
+                onClick = onCycleRepeatMode,
+                enabled = uiState.isTtsReady,
+            ) {
                 Icon(
                     Icons.Default.Repeat,
-                    contentDescription = "循环播放",
-                    tint = if (uiState.loopEnabled) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                    contentDescription = repeatModeContentDescription(uiState.queueRepeatMode),
+                    tint = when (uiState.queueRepeatMode) {
+                        TtsQueueRepeatMode.OFF -> MaterialTheme.colorScheme.onSurfaceVariant
+                        TtsQueueRepeatMode.REPEAT_ONE,
+                        TtsQueueRepeatMode.REPEAT_ALL,
+                        -> MaterialTheme.colorScheme.primary
                     },
+                )
+            }
+            IconButton(onClick = onOpenQueue) {
+                Icon(Icons.Default.List, contentDescription = "播放列表")
+            }
+            if (uiState.queueCount > 0) {
+                Text(
+                    text = "待播 ${uiState.queueCount}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             IconButton(onClick = onOpenSleepTimer, enabled = uiState.isTtsReady) {
@@ -406,6 +423,12 @@ fun ReaderTtsSettingsSheet(
             )
         }
     }
+}
+
+private fun repeatModeContentDescription(mode: TtsQueueRepeatMode): String = when (mode) {
+    TtsQueueRepeatMode.OFF -> "循环：关闭"
+    TtsQueueRepeatMode.REPEAT_ONE -> "循环：单曲"
+    TtsQueueRepeatMode.REPEAT_ALL -> "循环：列表"
 }
 
 private fun sleepTimerStatusLabel(uiState: ReaderUiState): String? = when (uiState.sleepTimerMode) {

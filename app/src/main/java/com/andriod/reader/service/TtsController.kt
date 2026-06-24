@@ -22,6 +22,7 @@ import androidx.media.app.NotificationCompat.MediaStyle
 import android.support.v4.media.session.MediaSessionCompat
 import com.andriod.reader.MainActivity
 import com.andriod.reader.R
+import com.andriod.reader.data.local.AppDiagnosticLog
 import com.andriod.reader.data.local.MarkdownPlainText
 import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.domain.TtsSpeechBackend
@@ -39,6 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class TtsController(
     context: Context,
     private val settingsStore: SettingsStore,
+    private val diagnosticLog: AppDiagnosticLog,
     private var onSegmentChanged: (Int, Int) -> Unit,
     private var onPlaybackStateChanged: (Boolean) -> Unit,
     private var onSpeakError: (String) -> Unit,
@@ -101,7 +103,7 @@ class TtsController(
 
     private fun ensureOnlineBackend(): OnlineEdgeSpeechBackend {
         if (onlineBackend == null) {
-            onlineBackend = OnlineEdgeSpeechBackend(appContext, settingsStore)
+            onlineBackend = OnlineEdgeSpeechBackend(appContext, settingsStore, diagnosticLog)
         }
         return onlineBackend!!
     }
@@ -137,7 +139,7 @@ class TtsController(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 engine.setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build(),
                 )
@@ -367,11 +369,13 @@ class TtsController(
 
     fun start(fileName: String, title: String, text: String) {
         if (!isReady()) {
+            diagnosticLog.w("TtsController", "start blocked: engine not ready")
             onSpeakError("语音引擎尚未就绪")
             return
         }
         val plain = MarkdownPlainText.stripForSpeech(text)
         if (plain.isBlank()) {
+            diagnosticLog.w("TtsController", "start blocked: empty text file=$fileName")
             onSpeakError("没有可朗读的正文")
             return
         }
@@ -390,7 +394,12 @@ class TtsController(
         onSegmentChanged(currentIndex, segments.size)
         onPlaybackStateChanged(true)
         notifySessionChanged()
+        diagnosticLog.i(
+            "TtsController",
+            "start file=$fileName title=$title segments=${segments.size} backend=${settingsStore.getTtsSpeechBackend()}",
+        )
         if (!ensureAudioFocus()) {
+            diagnosticLog.w("TtsController", "start failed: no audio focus")
             onSpeakError("无法获取音频焦点，请关闭其他正在播放的应用后重试")
             stop()
             return
@@ -442,6 +451,7 @@ class TtsController(
     }
 
     fun stop() {
+        diagnosticLog.i("TtsController", "stop")
         onlineBackend?.stop()
         tts?.stop()
         abandonAudioFocus()
@@ -542,24 +552,42 @@ class TtsController(
             onSegmentChanged(currentIndex, segments.size)
             notifySessionChanged()
             speakCurrent()
+        } else if (tryAdvancePlaylist()) {
+            // playlist manager started next note
         } else {
             stop()
         }
     }
 
+    private fun tryAdvancePlaylist(): Boolean {
+        return runCatching {
+            val entryPoint = EntryPointAccessors.fromApplication(
+                appContext,
+                TtsServiceEntryPoint::class.java,
+            )
+            entryPoint.ttsPlaylistManager().handleNoteFinished(appContext)
+        }.getOrDefault(false)
+    }
+
     private fun speakText(text: String, utteranceId: String) {
         if (!ensureAudioFocus()) {
+            diagnosticLog.w("TtsController", "speakText no audio focus utterance=$utteranceId")
             onSpeakError("无法获取音频焦点，请关闭其他正在播放的应用后重试")
             stop()
             return
         }
         if (wantsOnlineBackend()) {
             if (shouldUseOnline()) {
+                diagnosticLog.i(
+                    "TtsController",
+                    "speakText online utterance=$utteranceId chars=${text.length} onlineActive=$onlineActive",
+                )
                 ensureOnlineBackend().speak(
                     text = text,
                     utteranceId = utteranceId,
                     onDone = { handleSegmentFinished() },
                     onError = { message ->
+                        diagnosticLog.e("TtsController", "online error: $message")
                         if (ready && tts != null) {
                             onSpeakError("在线合成失败，已改用系统语音：$message")
                             speakWithSystem(text, utteranceId)
@@ -571,6 +599,7 @@ class TtsController(
                 )
                 return
             }
+            diagnosticLog.w("TtsController", "speakText offline fallback utterance=$utteranceId")
             if (ready && tts != null) {
                 onSpeakError("当前无网络，已改用系统语音朗读")
                 speakWithSystem(text, utteranceId)
@@ -580,6 +609,7 @@ class TtsController(
             stop()
             return
         }
+        diagnosticLog.d("TtsController", "speakText system utterance=$utteranceId chars=${text.length}")
         speakWithSystem(text, utteranceId)
     }
 
@@ -611,7 +641,7 @@ class TtsController(
             val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(
                     AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                         .build(),
                 )
@@ -623,7 +653,7 @@ class TtsController(
             @Suppress("DEPRECATION")
             audioManager.requestAudioFocus(
                 audioFocusChangeListener,
-                AudioManager.STREAM_MUSIC,
+                AudioManager.STREAM_ACCESSIBILITY,
                 AudioManager.AUDIOFOCUS_GAIN,
             ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         }
@@ -743,4 +773,7 @@ object TtsNotificationHelper {
 @InstallIn(SingletonComponent::class)
 interface TtsServiceEntryPoint {
     fun settingsStore(): SettingsStore
+    fun noteRepository(): com.andriod.reader.data.repository.NoteRepository
+    fun ttsPlaylistManager(): TtsPlaylistManager
+    fun appDiagnosticLog(): AppDiagnosticLog
 }

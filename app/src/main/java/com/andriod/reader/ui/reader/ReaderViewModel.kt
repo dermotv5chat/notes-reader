@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andriod.reader.data.local.AppDiagnosticLog
 import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.data.repository.NoteRepository
 import com.andriod.reader.data.repository.BlockPracticeDisplayMeta
@@ -17,6 +18,7 @@ import com.andriod.reader.domain.PracticeEvent
 import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
+import com.andriod.reader.domain.TtsQueueRepeatMode
 import com.andriod.reader.service.LastSleepTimerPreset
 import com.andriod.reader.service.SleepTimerPresetPolicy
 import com.andriod.reader.service.SleepTimerMode
@@ -24,7 +26,9 @@ import com.andriod.reader.service.TtsHelper
 import com.andriod.reader.service.TtsVoiceQuality
 import com.andriod.reader.service.TtsPlaybackManager
 import com.andriod.reader.service.TtsPlaybackSession
+import com.andriod.reader.service.TtsPlaylistManager
 import com.andriod.reader.ui.NavArgs
+import com.andriod.reader.ui.Routes
 import com.andriod.reader.util.NotificationPermission
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -34,6 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
+import java.time.Instant
 import javax.inject.Inject
 
 data class ReaderUiState(
@@ -53,7 +58,10 @@ data class ReaderUiState(
     val isTtsReady: Boolean = false,
     val isTtsInitializing: Boolean = false,
     val ttsError: String? = null,
-    val loopEnabled: Boolean = false,
+    val queueRepeatMode: TtsQueueRepeatMode = TtsQueueRepeatMode.OFF,
+    val queueCount: Int = 0,
+    val noteInQueue: Boolean = false,
+    val canSelectRepeatAll: Boolean = false,
     val ttsSettingsVisible: Boolean = false,
     val sleepTimerVisible: Boolean = false,
     val sleepTimerSliderMinutes: Float = 0f,
@@ -78,6 +86,8 @@ class ReaderViewModel @Inject constructor(
     private val noteRepository: NoteRepository,
     private val practiceRepository: PracticeRepository,
     private val settingsStore: SettingsStore,
+    private val playlistManager: TtsPlaylistManager,
+    private val diagnosticLog: AppDiagnosticLog,
 ) : ViewModel() {
     private val fileName: String = NavArgs.decodeFileName(savedStateHandle.get<String>("fileName"))
 
@@ -97,6 +107,19 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             TtsPlaybackManager.session.collect { session ->
                 syncFromSession(session)
+            }
+        }
+        viewModelScope.launch {
+            playlistManager.state.collect { snapshot ->
+                val fileName = _uiState.value.note?.fileName
+                _uiState.update {
+                    it.copy(
+                        queueRepeatMode = snapshot.repeatMode,
+                        queueCount = snapshot.items.size,
+                        noteInQueue = fileName != null && snapshot.items.any { item -> item.fileName == fileName },
+                        canSelectRepeatAll = snapshot.items.isNotEmpty(),
+                    )
+                }
             }
         }
     }
@@ -144,6 +167,7 @@ class ReaderViewModel @Inject constructor(
                 _uiState.update { it.copy(isPlaying = playing) }
             },
             onSpeakError = { message ->
+                diagnosticLog.e("Reader", "ttsError: $message")
                 _uiState.update { it.copy(ttsError = message, isPlaying = false) }
             },
         )
@@ -151,6 +175,7 @@ class ReaderViewModel @Inject constructor(
 
     fun initTts(hostContext: Context) {
         lastHostContext = hostContext
+        diagnosticLog.d("Reader", "initTts file=$fileName")
         viewModelScope.launch {
             _uiState.update { it.copy(isTtsInitializing = true, ttsError = null) }
             attachUiCallbacks()
@@ -164,6 +189,7 @@ class ReaderViewModel @Inject constructor(
                     val engines = TtsHelper.listInstalledEngines(hostContext)
                     val defaultEngine = TtsHelper.defaultEnginePackage(hostContext)
                     val tried = ctrl.attemptedEngineLabels()
+                    diagnosticLog.e("Reader", "initTts failed engines=$tried")
                     _uiState.update {
                         it.copy(
                             isTtsInitializing = false,
@@ -189,12 +215,13 @@ class ReaderViewModel @Inject constructor(
             }
             tts.setSpeechRate(_uiState.value.speechRate)
             tts.setPitch(_uiState.value.speechPitch)
-            tts.setLoopEnabled(_uiState.value.loopEnabled)
+            playlistManager.syncLoopToController()
             tts.applyVoicePreference(_uiState.value.voicePreference)
             _uiState.value.selectedVoiceId?.let { tts.applySelectedVoice(it) }
             controller = tts
             refreshVoiceOptions(tts)
             syncFromSession(TtsPlaybackManager.session.value)
+            diagnosticLog.i("Reader", "initTts ready backend=${tts.speechBackend()}")
             _uiState.update {
                 it.copy(
                     isTtsInitializing = false,
@@ -309,11 +336,30 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    fun toggleLoop() {
-        val enabled = !_uiState.value.loopEnabled
-        settingsStore.saveLoopPlayback(enabled)
-        controller?.setLoopEnabled(enabled)
-        _uiState.update { it.copy(loopEnabled = enabled) }
+    fun cycleRepeatMode() {
+        playlistManager.cycleRepeatMode()
+    }
+
+    fun setQueueRepeatMode(mode: TtsQueueRepeatMode) {
+        playlistManager.setRepeatMode(mode)
+    }
+
+    fun addCurrentNoteToQueue() {
+        val note = _uiState.value.note ?: return
+        playlistManager.add(note.fileName, note.title)
+    }
+
+    fun removeFromQueue(fileName: String) {
+        playlistManager.remove(fileName)
+    }
+
+    fun clearQueue() {
+        playlistManager.clear()
+    }
+
+    fun playQueueItem(fileName: String) {
+        val host = lastHostContext ?: return
+        playlistManager.playItem(host, fileName)
     }
 
     fun onVoicePickerExpandedChange(expanded: Boolean) {
@@ -337,10 +383,12 @@ class ReaderViewModel @Inject constructor(
 
     fun onSpeechBackendChange(backend: TtsSpeechBackend) {
         viewModelScope.launch {
+            diagnosticLog.i("Reader", "speechBackendChange -> $backend")
             settingsStore.saveTtsSpeechBackend(backend)
             controller?.applySpeechBackend(backend)
             val wasPlaying = TtsPlaybackManager.session.value.hasActiveSession
             TtsPlaybackManager.reinitialize(context)
+            attachUiCallbacks()
             val tts = TtsPlaybackManager.awaitReady(context)
             controller = tts
             tts.setSpeechRate(_uiState.value.speechRate)
@@ -416,6 +464,10 @@ class ReaderViewModel @Inject constructor(
     fun togglePlayPause() {
         val host = lastHostContext
         val state = _uiState.value
+        diagnosticLog.d(
+            "Reader",
+            "togglePlayPause ready=${state.isTtsReady} playing=${state.isPlaying} file=${state.note?.fileName}",
+        )
         if (host == null || controller == null || !state.isTtsReady) {
             _uiState.update { it.copy(ttsError = it.ttsError ?: "语音引擎尚未就绪") }
             host?.let { initTts(it) }
@@ -564,6 +616,32 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    fun updatePracticeEntryNote(recordedAt: Instant, note: String) {
+        val sheet = _uiState.value.practiceSheet ?: return
+        val file = _uiState.value.note?.fileName ?: return
+        if (!practiceRepository.updateEntryNote(file, sheet.blockId, recordedAt, note)) return
+        val history = practiceRepository.getBlockHistory(file, sheet.blockId)
+        _uiState.update {
+            it.copy(
+                practiceSheet = sheet.copy(history = history),
+                todayPractice = practiceRepository.getPeriodEntriesForBlocks(file, it.blocks),
+                practiceMeta = practiceRepository.getDisplayMetaForBlocks(file, it.blocks),
+            )
+        }
+    }
+
+    fun practiceCalendarRouteArgs(): String? {
+        val sheet = _uiState.value.practiceSheet ?: return null
+        val file = _uiState.value.note?.fileName ?: return null
+        return Routes.practiceCalendar(
+            fileName = file,
+            blockId = sheet.blockId,
+            blockLabel = sheet.blockLabel,
+            mode = sheet.mode,
+            repeatPeriod = sheet.repeatPeriod,
+        )
+    }
+
     private fun loadInitialState(): ReaderUiState {
         val note = noteRepository.getNote(fileName)
         val blocks = note?.let { practiceRepository.parseBlocks(it.content, it.fileName) }.orEmpty()
@@ -584,7 +662,12 @@ class ReaderViewModel @Inject constructor(
             selectedVoiceId = settingsStore.getSelectedVoiceId(),
             voicePreference = readVoicePreference(),
             speechBackend = settingsStore.getTtsSpeechBackend(),
-            loopEnabled = settingsStore.isLoopPlaybackEnabled(),
+            queueRepeatMode = playlistManager.state.value.repeatMode,
+            queueCount = playlistManager.state.value.items.size,
+            noteInQueue = note?.let { n ->
+                playlistManager.state.value.items.any { it.fileName == n.fileName }
+            } ?: false,
+            canSelectRepeatAll = playlistManager.state.value.items.isNotEmpty(),
             lastSleepTimerPresetSubtitle = settingsStore.getLastSleepTimerPreset().displaySubtitle(),
         )
     }

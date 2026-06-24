@@ -82,6 +82,26 @@ class PracticeLogStore @Inject constructor(
         writeRaw(all)
     }
 
+    fun updateEntryNote(
+        fileName: String,
+        blockId: String,
+        recordedAt: Instant,
+        note: String,
+    ): Boolean {
+        val all = readRaw().toMutableMap()
+        val noteLogs = all[fileName]?.toMutableMap() ?: return false
+        val blockLogs = noteLogs[blockId]?.toMutableList() ?: return false
+        val targetKey = recordedAt.toString()
+        val index = blockLogs.indexOfFirst { it.recordedAt == targetKey }
+        if (index < 0) return false
+        val existing = blockLogs[index]
+        blockLogs[index] = existing.copy(note = note)
+        noteLogs[blockId] = blockLogs
+        all[fileName] = noteLogs
+        writeRaw(all)
+        return true
+    }
+
     fun clearPeriodEntry(
         fileName: String,
         blockId: String,

@@ -65,6 +65,8 @@ fun NoteListScreen(
     onOpenNote: (String) -> Unit,
     onEditNote: (String) -> Unit,
     onCreateNote: (parentFolder: String) -> Unit,
+    onAddToQueue: (fileName: String, title: String) -> Unit = { _, _ -> },
+    isInQueue: (String) -> Boolean = { false },
     viewModel: NoteListViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -308,6 +310,11 @@ fun NoteListScreen(
                                 onEdit = { onEditNote(note.fileName) },
                                 onRename = { viewModel.requestRenameNote(note.fileName) },
                                 onDelete = { viewModel.requestDelete(note.fileName) },
+                                onAddToQueue = {
+                                    if (!isInQueue(note.fileName)) {
+                                        onAddToQueue(note.fileName, note.title)
+                                    }
+                                },
                             ) {
                                 NoteRowContent(
                                     title = note.title,
@@ -369,6 +376,11 @@ fun NoteListScreen(
                                     onEdit = { onEditNote(entry.note.fileName) },
                                     onRename = { viewModel.requestRenameNote(entry.note.fileName) },
                                     onDelete = { viewModel.requestDelete(entry.note.fileName) },
+                                    onAddToQueue = {
+                                        if (!isInQueue(entry.note.fileName)) {
+                                            onAddToQueue(entry.note.fileName, entry.note.title)
+                                        }
+                                    },
                                 ) {
                                     NoteRowContent(
                                         title = entry.note.title,

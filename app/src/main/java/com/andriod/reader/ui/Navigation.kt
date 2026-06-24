@@ -18,7 +18,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -29,6 +33,9 @@ import com.andriod.reader.ui.editor.EditorScreen
 import com.andriod.reader.ui.guide.PrinciplesGuideScreen
 import com.andriod.reader.ui.list.NoteListScreen
 import com.andriod.reader.ui.player.TtsMiniPlayerBar
+import com.andriod.reader.ui.player.TtsPlaylistViewModel
+import com.andriod.reader.ui.player.TtsQueueSheet
+import com.andriod.reader.ui.reader.PracticeCalendarScreen
 import com.andriod.reader.ui.reader.ReaderScreen
 import com.andriod.reader.ui.settings.SettingsScreen
 
@@ -39,6 +46,8 @@ object Routes {
     const val EDITOR = "editor?fileName={fileName}"
     const val EDITOR_IN_FOLDER = "editor?parentFolder={parentFolder}"
     const val READER = "reader?fileName={fileName}"
+    const val PRACTICE_CALENDAR =
+        "practice_calendar?fileName={fileName}&blockId={blockId}&blockLabel={blockLabel}&mode={mode}&repeatPeriod={repeatPeriod}"
 
     fun editor(fileName: String? = null, parentFolder: String = ""): String =
         when {
@@ -48,6 +57,20 @@ object Routes {
         }
 
     fun reader(fileName: String): String = "reader?fileName=${Uri.encode(fileName)}"
+
+    fun practiceCalendar(
+        fileName: String,
+        blockId: String,
+        blockLabel: String,
+        mode: com.andriod.reader.domain.PracticeMode,
+        repeatPeriod: com.andriod.reader.domain.RepeatPeriod,
+    ): String = buildString {
+        append("practice_calendar?fileName=${Uri.encode(fileName)}")
+        append("&blockId=${Uri.encode(blockId)}")
+        append("&blockLabel=${Uri.encode(blockLabel)}")
+        append("&mode=${Uri.encode(mode.name)}")
+        append("&repeatPeriod=${Uri.encode(repeatPeriod.name)}")
+    }
 }
 
 @Composable
@@ -59,6 +82,9 @@ fun ReaderApp(
     val backStack by navController.currentBackStackEntryAsState()
     val currentRoute = backStack?.destination?.route
     val session by TtsPlaybackManager.session.collectAsState()
+    val playlistViewModel: TtsPlaylistViewModel = hiltViewModel()
+    val playlistSnapshot by playlistViewModel.snapshot.collectAsState()
+    var showQueueSheet by remember { mutableStateOf(false) }
     val showBottomBar = currentRoute == Routes.NOTES || currentRoute == Routes.SETTINGS
     val isReader = currentRoute?.startsWith("reader") == true
     val isEditor = currentRoute?.startsWith("editor") == true
@@ -77,6 +103,17 @@ fun ReaderApp(
         onOpenReaderConsumed()
     }
 
+    TtsQueueSheet(
+        visible = showQueueSheet,
+        snapshot = playlistSnapshot,
+        session = session,
+        onDismiss = { showQueueSheet = false },
+        onPlayItem = playlistViewModel::playItem,
+        onRemoveItem = playlistViewModel::remove,
+        onClear = playlistViewModel::clear,
+        onRepeatModeChange = playlistViewModel::setRepeatMode,
+    )
+
     Scaffold(
         contentWindowInsets = WindowInsets.navigationBars,
         bottomBar = {
@@ -85,6 +122,7 @@ fun ReaderApp(
                     if (showMiniBar) {
                         TtsMiniPlayerBar(
                             session = session,
+                            queueCount = playlistSnapshot.items.size,
                             onOpenReader = {
                                 session.fileName?.let { fileName ->
                                     navController.navigate(Routes.reader(fileName)) {
@@ -92,6 +130,7 @@ fun ReaderApp(
                                     }
                                 }
                             },
+                            onOpenQueue = { showQueueSheet = true },
                             onTogglePlayPause = TtsPlaybackManager::togglePlayPause,
                         )
                     }
@@ -149,6 +188,10 @@ fun ReaderApp(
                     onCreateNote = { parentFolder ->
                         navController.navigate(Routes.editor(parentFolder = parentFolder))
                     },
+                    onAddToQueue = { fileName, title ->
+                        playlistViewModel.add(fileName, title)
+                    },
+                    isInQueue = playlistViewModel::contains,
                 )
             }
             composable(Routes.SETTINGS) {
@@ -182,6 +225,17 @@ fun ReaderApp(
                 ReaderScreen(
                     onBack = { navController.popBackStack() },
                     onEdit = { fileName -> navController.navigate(Routes.editor(fileName)) },
+                    onOpenPracticeCalendar = { route ->
+                        navController.navigate(route) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onOpenQueue = { showQueueSheet = true },
+                )
+            }
+            composable(Routes.PRACTICE_CALENDAR) {
+                PracticeCalendarScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
         }

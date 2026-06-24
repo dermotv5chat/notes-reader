@@ -1,6 +1,7 @@
 package com.andriod.reader.service
 
 import android.content.Context
+import com.andriod.reader.data.local.AppDiagnosticLog
 import com.andriod.reader.data.local.MarkdownPlainText
 import com.andriod.reader.data.remote.SettingsStore
 import dagger.hilt.android.EntryPointAccessors
@@ -20,6 +21,17 @@ object TtsPlaybackManager {
     private val noopSegment: (Int, Int) -> Unit = { _, _ -> }
     private val noopPlayback: (Boolean) -> Unit = {}
     private val noopError: (String) -> Unit = {}
+
+    private var attachedSegmentCallback: (Int, Int) -> Unit = noopSegment
+    private var attachedPlaybackCallback: (Boolean) -> Unit = noopPlayback
+    private var attachedErrorCallback: (String) -> Unit = noopError
+
+    private fun diagnosticLog(context: Context): AppDiagnosticLog {
+        return EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            TtsServiceEntryPoint::class.java,
+        ).appDiagnosticLog()
+    }
 
     private fun settingsStore(context: Context): SettingsStore {
         return EntryPointAccessors.fromApplication(
@@ -73,9 +85,10 @@ object TtsPlaybackManager {
         return TtsController(
             context = context.applicationContext,
             settingsStore = settingsStore(context),
-            onSegmentChanged = noopSegment,
-            onPlaybackStateChanged = noopPlayback,
-            onSpeakError = noopError,
+            diagnosticLog = diagnosticLog(context),
+            onSegmentChanged = attachedSegmentCallback,
+            onPlaybackStateChanged = attachedPlaybackCallback,
+            onSpeakError = attachedErrorCallback,
             onSessionChanged = { syncSession() },
             sleepTimerStateProvider = { sleepTimer?.snapshot() ?: TtsSleepTimerState() },
         ).also {
@@ -89,10 +102,16 @@ object TtsPlaybackManager {
         onPlaybackStateChanged: (Boolean) -> Unit,
         onSpeakError: (String) -> Unit = {},
     ) {
+        attachedSegmentCallback = onSegmentChanged
+        attachedPlaybackCallback = onPlaybackStateChanged
+        attachedErrorCallback = onSpeakError
         controller?.updateCallbacks(onSegmentChanged, onPlaybackStateChanged, onSpeakError)
     }
 
     fun detachUiCallbacks() {
+        attachedSegmentCallback = noopSegment
+        attachedPlaybackCallback = noopPlayback
+        attachedErrorCallback = noopError
         controller?.updateCallbacks(noopSegment, noopPlayback, noopError)
     }
 
@@ -118,7 +137,17 @@ object TtsPlaybackManager {
         if (previousFile != null && previousFile != fileName) {
             sleepTimer?.cancel()
         }
+        diagnosticLog(context).i(
+            "TtsPlayback",
+            "startPlayback file=$fileName title=$title chars=${content.length}",
+        )
         controller?.start(fileName, title, content)
+        runCatching {
+            EntryPointAccessors.fromApplication(
+                context.applicationContext,
+                TtsServiceEntryPoint::class.java,
+            ).ttsPlaylistManager().onPlaybackStarted(fileName)
+        }
         syncSession()
         if (withForegroundService) {
             TtsPlaybackService.ensureStarted(context)
@@ -150,6 +179,7 @@ object TtsPlaybackManager {
     }
 
     fun stopPlayback(clearTimer: Boolean = true) {
+        appContext?.let { diagnosticLog(it).i("TtsPlayback", "stopPlayback") }
         if (clearTimer) {
             sleepTimer?.cancel()
         }
@@ -240,6 +270,7 @@ object TtsPlaybackManager {
     }
 
     fun reinitialize(context: Context) {
+        diagnosticLog(context).i("TtsPlayback", "reinitialize")
         release()
         getOrCreate(context)
     }

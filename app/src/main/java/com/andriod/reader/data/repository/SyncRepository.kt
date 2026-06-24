@@ -1,6 +1,7 @@
 package com.andriod.reader.data.repository
 
 import android.util.Base64
+import com.andriod.reader.data.local.AppDiagnosticLog
 import com.andriod.reader.data.local.MarkdownParser
 import com.andriod.reader.data.local.NoteFileStore
 import com.andriod.reader.data.local.SyncStateStore
@@ -28,6 +29,7 @@ class SyncRepository @Inject constructor(
     private val settingsStore: SettingsStore,
     private val noteFileStore: NoteFileStore,
     private val syncStateStore: SyncStateStore,
+    private val diagnosticLog: AppDiagnosticLog,
 ) {
     suspend fun testConnectionMessage(): String = when (val result = testConnectionInternal()) {
         is ConnectionTestResult.Success -> result.message
@@ -43,13 +45,19 @@ class SyncRepository @Inject constructor(
         try {
             val repo = gitHubApi.getRepo(settings.owner, settings.repo, auth)
             val items = resolveRemoteMarkdownItems(settings, auth)
+            diagnosticLog.i(
+                "Sync",
+                "testConnection ok repo=${repo.fullName} mdFiles=${items.size}",
+            )
             ConnectionTestResult.Success(
                 "连接成功：${repo.fullName}\n" +
                     "扫描整个仓库，发现 ${items.size} 个 .md 文件（含子目录）",
             )
         } catch (e: HttpException) {
+            diagnosticLog.e("Sync", "testConnection http ${e.code()}", e)
             ConnectionTestResult.Error(parseHttpError(e, settings))
         } catch (e: Exception) {
+            diagnosticLog.e("Sync", "testConnection failed", e)
             ConnectionTestResult.Error(e.message ?: "连接失败")
         }
     }
@@ -67,6 +75,7 @@ class SyncRepository @Inject constructor(
 
         try {
             gitHubApi.getRepo(settings.owner, settings.repo, auth)
+            diagnosticLog.i("Sync", "uploadPending start")
 
             states.filter { (_, state) ->
                 state.pendingDelete || state.syncStatus == SyncStatus.PENDING || state.syncStatus == SyncStatus.LOCAL_ONLY
@@ -114,12 +123,16 @@ class SyncRepository @Inject constructor(
                     return@withContext SyncResult.Error(parseUploadHttpError(e, settings, localPath))
                 }
             }
+            syncStateStore.writeAll(states)
+            diagnosticLog.i("Sync", "uploadPending ok uploaded=$uploaded deleted=$deleted")
             SyncResult.Success(uploaded = uploaded, downloaded = 0, deleted = deleted)
         } catch (e: HttpException) {
             syncStateStore.writeAll(states)
+            diagnosticLog.e("Sync", "uploadPending http ${e.code()}", e)
             SyncResult.Error(parseHttpError(e, settings))
         } catch (e: Exception) {
             syncStateStore.writeAll(states)
+            diagnosticLog.e("Sync", "uploadPending failed", e)
             SyncResult.Error(e.message ?: "上传失败")
         }
     }
@@ -135,6 +148,7 @@ class SyncRepository @Inject constructor(
 
         try {
             gitHubApi.getRepo(settings.owner, settings.repo, auth)
+            diagnosticLog.i("Sync", "downloadRemote start")
             val remoteItems = resolveRemoteMarkdownItems(settings, auth)
 
             if (remoteItems.isEmpty()) {
@@ -202,10 +216,13 @@ class SyncRepository @Inject constructor(
             }
 
             syncStateStore.writeAll(states)
+            diagnosticLog.i("Sync", "downloadRemote ok downloaded=$downloaded")
             SyncResult.Success(uploaded = 0, downloaded = downloaded, deleted = 0)
         } catch (e: HttpException) {
+            diagnosticLog.e("Sync", "downloadRemote http ${e.code()}", e)
             SyncResult.Error(parseHttpError(e, settings))
         } catch (e: Exception) {
+            diagnosticLog.e("Sync", "downloadRemote failed", e)
             SyncResult.Error(e.message ?: "下载失败")
         }
     }

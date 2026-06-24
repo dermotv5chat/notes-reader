@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
@@ -27,17 +28,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import java.time.Instant
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -262,6 +261,8 @@ fun PracticeSheet(
     onDismiss: () -> Unit,
     onSave: (PracticeEvent, String) -> Unit,
     onClear: () -> Unit,
+    onOpenCalendar: () -> Unit = {},
+    onUpdateEntryNote: (Instant, String) -> Unit = { _, _ -> },
 ) {
     if (sheetState == null) return
 
@@ -274,6 +275,8 @@ fun PracticeSheet(
             sheetState = sheetState,
             onSave = onSave,
             onClear = onClear,
+            onOpenCalendar = onOpenCalendar,
+            onUpdateEntryNote = onUpdateEntryNote,
         )
     }
 }
@@ -283,21 +286,20 @@ internal fun PracticeSheetContent(
     sheetState: PracticeSheetState,
     onSave: (PracticeEvent, String) -> Unit,
     onClear: () -> Unit,
+    onOpenCalendar: () -> Unit = {},
+    onUpdateEntryNote: (Instant, String) -> Unit = { _, _ -> },
 ) {
     var pendingNoteEvent by remember(sheetState.blockId) {
         mutableStateOf<PracticeEvent?>(null)
+    }
+    var editingEntry by remember(sheetState.blockId) {
+        mutableStateOf<PracticeLogEntry?>(null)
     }
     var showClearConfirm by remember(sheetState.blockId) {
         mutableStateOf(false)
     }
     var historyExpanded by remember(sheetState.blockId) {
         mutableStateOf(false)
-    }
-    var historyTab by remember(sheetState.blockId) {
-        mutableIntStateOf(0)
-    }
-    var selectedDayEntries by remember(sheetState.blockId) {
-        mutableStateOf<List<PracticeLogEntry>?>(null)
     }
 
     pendingNoteEvent?.let { event ->
@@ -311,22 +313,16 @@ internal fun PracticeSheetContent(
         )
     }
 
-    selectedDayEntries?.let { entries ->
-        AlertDialog(
-            onDismissRequest = { selectedDayEntries = null },
-            title = { Text("当日记录") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    entries.forEach { entry ->
-                        PracticeHistoryRow(entry = entry)
-                    }
-                }
+    editingEntry?.let { entry ->
+        PracticeNoteDialog(
+            event = entry.event,
+            initialNote = entry.note,
+            editMode = true,
+            onConfirm = { note ->
+                editingEntry = null
+                onUpdateEntryNote(entry.recordedAt, note)
             },
-            confirmButton = {
-                TextButton(onClick = { selectedDayEntries = null }) {
-                    Text("关闭")
-                }
-            },
+            onDismiss = { editingEntry = null },
         )
     }
 
@@ -433,62 +429,50 @@ internal fun PracticeSheetContent(
                     text = "历史记录（${sheetState.history.size} 条）",
                     style = MaterialTheme.typography.titleSmall,
                 )
-                Icon(
-                    imageVector = if (historyExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (historyExpanded) "收起历史" else "展开历史",
-                    modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_TOGGLE),
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = onOpenCalendar,
+                        modifier = Modifier.testTag(PracticeSheetTestTags.OPEN_CALENDAR_BUTTON),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarMonth,
+                            contentDescription = null,
+                            modifier = Modifier.padding(end = 4.dp),
+                        )
+                        Text("月历")
+                    }
+                    Icon(
+                        imageVector = if (historyExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (historyExpanded) "收起历史" else "展开历史",
+                        modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_TOGGLE),
+                    )
+                }
             }
 
             if (historyExpanded) {
-                TabRow(selectedTabIndex = historyTab) {
-                    Tab(
-                        selected = historyTab == 0,
-                        onClick = { historyTab = 0 },
-                        text = { Text("列表") },
-                        modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_TAB_LIST),
-                    )
-                    Tab(
-                        selected = historyTab == 1,
-                        onClick = { historyTab = 1 },
-                        text = { Text("月历") },
-                        modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_TAB_CALENDAR),
-                    )
-                }
-
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    when (historyTab) {
-                        0 -> {
-                            if (sheetState.history.isEmpty()) {
-                                Text(
-                                    text = "暂无记录",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_EMPTY),
-                                )
-                            } else {
-                                sheetState.history.forEachIndexed { index, entry ->
-                                    PracticeHistoryRow(
-                                        entry = entry,
-                                        modifier = if (index == 0) {
-                                            Modifier.testTag(PracticeSheetTestTags.HISTORY_ITEM)
-                                        } else {
-                                            Modifier
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                        1 -> {
-                            PracticeHistoryCalendar(
-                                history = sheetState.history,
-                                mode = sheetState.mode,
-                                onDaySelected = { _, entries -> selectedDayEntries = entries },
+                    if (sheetState.history.isEmpty()) {
+                        Text(
+                            text = "暂无记录",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_EMPTY),
+                        )
+                    } else {
+                        sheetState.history.forEachIndexed { index, entry ->
+                            PracticeHistoryRow(
+                                entry = entry,
+                                onClick = { editingEntry = entry },
+                                modifier = if (index == 0) {
+                                    Modifier.testTag(PracticeSheetTestTags.HISTORY_ITEM)
+                                } else {
+                                    Modifier
+                                },
                             )
                         }
                     }
@@ -515,59 +499,6 @@ internal fun PracticeSheetContent(
             }
         }
     }
-}
-
-@Composable
-private fun PracticeHistoryRow(
-    entry: PracticeLogEntry,
-    modifier: Modifier = Modifier,
-) {
-    val eventLabel = when (entry.event) {
-        PracticeEvent.FOLLOWED -> "遵守"
-        PracticeEvent.VIOLATED -> "违背"
-        PracticeEvent.COMMENT -> "评论"
-    }
-    val eventColor = when (entry.event) {
-        PracticeEvent.FOLLOWED -> MaterialTheme.colorScheme.primary
-        PracticeEvent.VIOLATED -> MaterialTheme.colorScheme.error
-        PracticeEvent.COMMENT -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val timeLabel = formatPracticeTime(entry)
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = timeLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = eventLabel,
-                style = MaterialTheme.typography.labelLarge,
-                color = eventColor,
-            )
-        }
-        if (entry.note.isNotBlank()) {
-            Text(
-                text = entry.note,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-    }
-}
-
-internal fun formatPracticeTime(entry: PracticeLogEntry): String {
-    val formatter = DateTimeFormatter.ofPattern("M月d日 HH:mm")
-    return entry.recordedAt.atZone(ZoneId.systemDefault()).format(formatter)
 }
 
 fun NoteBlock.displayLabel(): String = when (this) {

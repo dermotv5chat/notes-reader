@@ -19,10 +19,17 @@ internal fun PracticeNoteDialog(
     event: PracticeEvent,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
+    initialNote: String = "",
+    editMode: Boolean = false,
 ) {
-    var note by remember(event) { mutableStateOf("") }
+    var note by remember(event, initialNote, editMode) { mutableStateOf(initialNote) }
     val isComment = event == PracticeEvent.COMMENT
-    val title = if (isComment) "写评论" else "添加备注"
+    val title = when {
+        editMode && initialNote.isBlank() -> "添加备注"
+        editMode -> "编辑备注"
+        isComment -> "写评论"
+        else -> "添加备注"
+    }
     val fieldLabel = when (event) {
         PracticeEvent.COMMENT -> "想法或评论"
         PracticeEvent.FOLLOWED -> "备注（遵守）"

@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,6 +37,8 @@ import com.andriod.reader.util.NotificationPermission
 fun ReaderScreen(
     onBack: () -> Unit,
     onEdit: (fileName: String) -> Unit,
+    onOpenPracticeCalendar: (String) -> Unit = {},
+    onOpenQueue: () -> Unit = {},
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -100,6 +104,13 @@ fun ReaderScreen(
         onDismiss = viewModel::dismissPracticeSheet,
         onSave = viewModel::savePractice,
         onClear = viewModel::clearPracticeToday,
+        onOpenCalendar = {
+            viewModel.practiceCalendarRouteArgs()?.let { route ->
+                viewModel.dismissPracticeSheet()
+                onOpenPracticeCalendar(route)
+            }
+        },
+        onUpdateEntryNote = viewModel::updatePracticeEntryNote,
     )
 
     Scaffold(
@@ -113,6 +124,19 @@ fun ReaderScreen(
                 },
                 actions = {
                     uiState.note?.let { note ->
+                        IconButton(
+                            onClick = {
+                                if (!uiState.noteInQueue) {
+                                    viewModel.addCurrentNoteToQueue()
+                                }
+                            },
+                            enabled = !uiState.noteInQueue,
+                        ) {
+                            Icon(
+                                if (uiState.noteInQueue) Icons.Default.QueueMusic else Icons.Default.PlaylistAdd,
+                                contentDescription = if (uiState.noteInQueue) "已在播放列表" else "加入播放列表",
+                            )
+                        }
                         IconButton(
                             onClick = {
                                 if (viewModel.prepareForEdit()) {
@@ -138,7 +162,8 @@ fun ReaderScreen(
                 },
                 onStop = viewModel::stop,
                 onNextSegment = viewModel::nextSegment,
-                onToggleLoop = viewModel::toggleLoop,
+                onCycleRepeatMode = viewModel::cycleRepeatMode,
+                onOpenQueue = onOpenQueue,
                 onOpenTtsSettings = viewModel::openTtsSettings,
                 onOpenSleepTimer = viewModel::openSleepTimer,
                 onOpenNotificationSettings = viewModel::openNotificationSettings,

@@ -5,6 +5,7 @@ object PracticeSheetTestTags {
     const val FOLLOWED_BUTTON = "practice_followed_button"
     const val VIOLATED_BUTTON = "practice_violated_button"
     const val LAST_STATUS_DATE = "practice_last_status_date"
+    const val OPEN_CALENDAR_BUTTON = "practice_open_calendar_button"
     const val HISTORY_TAB_LIST = "practice_history_tab_list"
     const val HISTORY_TAB_CALENDAR = "practice_history_tab_calendar"
     const val HISTORY_CALENDAR = "practice_history_calendar"

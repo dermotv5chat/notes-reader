@@ -1,13 +1,18 @@
 package com.andriod.reader.ui.settings
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -35,6 +40,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.andriod.reader.data.local.StorageCategory
 import com.andriod.reader.ui.theme.AppThemeMode
 import com.andriod.reader.ui.tts.TtsVoiceSettingsSection
 
@@ -52,6 +58,8 @@ fun SettingsScreen(
     LaunchedEffect(context) {
         viewModel.setHostContext(context)
         viewModel.refreshTtsInfo()
+        viewModel.refreshLogStats()
+        viewModel.refreshStorageStats()
     }
 
     DisposableEffect(lifecycleOwner, context) {
@@ -59,6 +67,8 @@ fun SettingsScreen(
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.setHostContext(context)
                 viewModel.refreshTtsInfo()
+                viewModel.refreshLogStats()
+                viewModel.refreshStorageStats()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -217,6 +227,64 @@ fun SettingsScreen(
                 }
             }
 
+            Text("存储空间", modifier = Modifier.padding(top = 24.dp, bottom = 8.dp))
+            val storageTotalLabel = formatStorageSize(uiState.storageTotalBytes)
+            Text("应用占用约 $storageTotalLabel")
+            if (uiState.isAnalyzingStorage && uiState.storageCategories.isEmpty()) {
+                CircularProgressIndicator(modifier = Modifier.padding(vertical = 8.dp))
+            } else {
+                uiState.storageCategories.forEach { category ->
+                    StorageCategoryRow(
+                        category = category,
+                        selected = category.id in uiState.selectedStorageIds,
+                        onToggle = { viewModel.toggleStorageSelection(category.id) },
+                    )
+                }
+            }
+            OutlinedButton(
+                onClick = viewModel::cleanSelectedStorage,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                enabled = !uiState.isCleaningStorage &&
+                    uiState.selectedStorageIds.isNotEmpty() &&
+                    !uiState.isAnalyzingStorage,
+            ) {
+                if (uiState.isCleaningStorage) {
+                    CircularProgressIndicator()
+                } else {
+                    Text("清理选中项")
+                }
+            }
+
+            Text("诊断日志", modifier = Modifier.padding(top = 24.dp, bottom = 8.dp))
+            val logSizeKb = (uiState.logSizeBytes + 1023) / 1024
+            Text("当前日志：${uiState.logLineCount} 行 / ${logSizeKb} KB")
+            Text(
+                "记录朗读、同步与播放状态（不含 token 与笔记正文）。导出后可用 adb logcat -s ReaderDiag 对照调试。",
+                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+            )
+            OutlinedButton(
+                onClick = viewModel::exportDiagnosticLog,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !uiState.isExportingLog && uiState.logLineCount > 0,
+            ) {
+                if (uiState.isExportingLog) {
+                    CircularProgressIndicator()
+                } else {
+                    Text("导出日志到本地")
+                }
+            }
+            OutlinedButton(
+                onClick = viewModel::clearDiagnosticLog,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                enabled = !uiState.isClearingLog && uiState.logLineCount > 0,
+            ) {
+                if (uiState.isClearingLog) {
+                    CircularProgressIndicator()
+                } else {
+                    Text("清除日志")
+                }
+            }
+
             Button(
                 onClick = viewModel::save,
                 modifier = Modifier
@@ -227,6 +295,48 @@ fun SettingsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun StorageCategoryRow(
+    category: StorageCategory,
+    selected: Boolean,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+    ) {
+        if (category.cleanable) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = { onToggle() },
+            )
+        } else {
+            Spacer(modifier = Modifier.width(48.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text("${category.label} · ${formatStorageSize(category.sizeBytes)}")
+            Text(
+                text = category.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (category.cleanable) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.outline
+                },
+            )
+        }
+    }
+}
+
+private fun formatStorageSize(bytes: Long): String {
+    if (bytes < 1024) return "$bytes B"
+    val kb = (bytes + 1023) / 1024
+    if (kb < 1024) return "$kb KB"
+    val mb = bytes / (1024.0 * 1024.0)
+    return "${"%.2f".format(mb)} MB"
 }
 
 @Composable

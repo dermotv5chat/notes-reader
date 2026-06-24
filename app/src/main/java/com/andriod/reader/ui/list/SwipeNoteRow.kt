@@ -6,6 +6,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -13,7 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-private val NoteSwipeActionWidth = 192.dp
+private val NoteSwipeActionWidth = 256.dp
 private val FolderSwipeActionWidth = 64.dp
 
 @Composable
@@ -24,6 +25,7 @@ fun SwipeNoteRow(
     onEdit: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
+    onAddToQueue: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
@@ -35,6 +37,16 @@ fun SwipeNoteRow(
         modifier = modifier,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
         backgroundActions = {
+            if (onAddToQueue != null) {
+                IconButton(
+                    onClick = {
+                        onExpandedChange(false)
+                        onAddToQueue()
+                    },
+                ) {
+                    Icon(Icons.Default.PlaylistAdd, contentDescription = "加入播放列表")
+                }
+            }
             IconButton(
                 onClick = {
                     onExpandedChange(false)

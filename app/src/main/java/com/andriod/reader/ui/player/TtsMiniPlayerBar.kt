@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
@@ -30,7 +31,9 @@ import com.andriod.reader.service.TtsPlaybackSession
 @Composable
 fun TtsMiniPlayerBar(
     session: TtsPlaybackSession,
+    queueCount: Int = 0,
     onOpenReader: () -> Unit,
+    onOpenQueue: () -> Unit = {},
     onTogglePlayPause: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -101,6 +104,15 @@ fun TtsMiniPlayerBar(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+                if (queueCount > 0) {
+                    IconButton(onClick = onOpenQueue) {
+                        Icon(Icons.Default.List, contentDescription = "播放列表（$queueCount）")
+                    }
+                } else {
+                    IconButton(onClick = onOpenQueue) {
+                        Icon(Icons.Default.List, contentDescription = "播放列表")
+                    }
                 }
                 IconButton(onClick = onTogglePlayPause) {
                     Icon(

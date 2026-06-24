@@ -110,6 +110,13 @@ class PracticeRepository @Inject constructor(
         practiceLogStore.appendEntry(fileName, blockId, event, note, recordedAt)
     }
 
+    fun updateEntryNote(
+        fileName: String,
+        blockId: String,
+        recordedAt: Instant,
+        note: String,
+    ): Boolean = practiceLogStore.updateEntryNote(fileName, blockId, recordedAt, note)
+
     fun clearPeriodEntry(
         fileName: String,
         blockId: String,

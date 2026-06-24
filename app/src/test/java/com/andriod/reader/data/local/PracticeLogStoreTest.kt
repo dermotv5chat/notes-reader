@@ -289,4 +289,23 @@ class PracticeLogStoreTest {
             )?.event,
         )
     }
+
+    @Test
+    fun updateEntryNote_changesNoteWithoutChangingEvent() {
+        val recordedAt = instantOn(today, 21)
+        store.appendEntry(
+            fileName = fileName,
+            blockId = blockId,
+            event = PracticeEvent.FOLLOWED,
+            note = "",
+            recordedAt = recordedAt,
+        )
+
+        assertTrue(store.updateEntryNote(fileName, blockId, recordedAt, "补写的备注"))
+
+        val history = store.getHistoryForBlock(fileName, blockId)
+        assertEquals(1, history.size)
+        assertEquals(PracticeEvent.FOLLOWED, history.first().event)
+        assertEquals("补写的备注", history.first().note)
+    }
 }

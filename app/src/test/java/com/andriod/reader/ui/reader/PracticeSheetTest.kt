@@ -377,7 +377,31 @@ class PracticeSheetTest {
     }
 
     @Test
-    fun practiceSheetContent_historyCalendarTab() {
+    fun practiceSheetContent_openCalendarButtonVisibleWhenHistoryExpanded() {
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme {
+                    PracticeSheetContent(
+                        sheetState = PracticeSheetState(
+                            blockId = "id1",
+                            blockLabel = "测试准则",
+                        ),
+                        onSave = { _, _ -> },
+                        onClear = {},
+                        onOpenCalendar = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_SECTION, useUnmergedTree = true)
+            .performClick()
+        composeRule.onNodeWithTag(PracticeSheetTestTags.OPEN_CALENDAR_BUTTON, useUnmergedTree = true)
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun practiceSheetContent_historyItemOpensNoteEditDialog() {
         val recordedAt = Instant.parse("2026-06-20T14:30:00Z")
         composeRule.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
@@ -402,9 +426,8 @@ class PracticeSheetTest {
 
         composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_SECTION, useUnmergedTree = true)
             .performClick()
-        composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_TAB_CALENDAR, useUnmergedTree = true)
+        composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_ITEM, useUnmergedTree = true)
             .performClick()
-        composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_CALENDAR, useUnmergedTree = true)
-            .assertIsDisplayed()
+        composeRule.onNodeWithText("添加备注").assertIsDisplayed()
     }
 }
