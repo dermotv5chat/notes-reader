@@ -17,6 +17,7 @@ import com.andriod.reader.domain.TtsVoicePreference
 import com.andriod.reader.service.TtsHelper
 import com.andriod.reader.service.TtsVoiceQuality
 import com.andriod.reader.service.TtsPlaybackManager
+import com.andriod.reader.service.synthesis.SherpaModelManager
 import com.andriod.reader.ui.theme.AppThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -60,6 +61,9 @@ data class SettingsUiState(
     val selectedStorageIds: Set<String> = emptySet(),
     val isAnalyzingStorage: Boolean = false,
     val isCleaningStorage: Boolean = false,
+    val sherpaModelInstalled: Boolean = false,
+    val isDownloadingSherpaModel: Boolean = false,
+    val sherpaDownloadHint: String? = null,
 )
 
 @HiltViewModel
@@ -72,6 +76,7 @@ class SettingsViewModel @Inject constructor(
     private val storageAnalyzer: AppStorageAnalyzer,
     private val storageCleaner: AppStorageCleaner,
 ) : ViewModel() {
+    private val sherpaModelManager = SherpaModelManager(context, diagnosticLog)
     private val _uiState = MutableStateFlow(loadState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
@@ -99,6 +104,7 @@ class SettingsViewModel @Inject constructor(
             selectedVoiceId = settingsStore.getSelectedVoiceId(),
             voicePreference = preference,
             speechBackend = settingsStore.getTtsSpeechBackend(),
+            sherpaModelInstalled = sherpaModelManager.isModelInstalled(),
         )
     }
 
@@ -238,6 +244,7 @@ class SettingsViewModel @Inject constructor(
         val backend = controller.speechBackend()
         val activeVoiceId = when (backend) {
             TtsSpeechBackend.ONLINE_EDGE -> settingsStore.getEdgeTtsVoiceId()
+            TtsSpeechBackend.OFFLINE_SHERPA -> "sherpa-vits-zh"
             TtsSpeechBackend.SYSTEM -> diag.voiceName?.takeIf { name ->
                 options.any { it.id == name }
             } ?: _uiState.value.selectedVoiceId
@@ -263,7 +270,34 @@ class SettingsViewModel @Inject constructor(
                 voiceOptions = options,
                 selectedVoiceId = activeVoiceId,
                 speechBackend = backend,
+                sherpaModelInstalled = TtsPlaybackManager.sherpaModelInstalled() ||
+                    sherpaModelManager.isModelInstalled(),
             )
+        }
+    }
+
+    fun downloadSherpaModel() {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(isDownloadingSherpaModel = true, sherpaDownloadHint = "正在下载离线语音包…")
+            }
+            val result = withContext(Dispatchers.IO) {
+                sherpaModelManager.downloadAndInstall()
+            }
+            _uiState.update {
+                it.copy(
+                    isDownloadingSherpaModel = false,
+                    sherpaModelInstalled = sherpaModelManager.isModelInstalled(),
+                    sherpaDownloadHint = result.fold(
+                        onSuccess = { "离线语音包已就绪" },
+                        onFailure = { error -> error.message ?: "下载失败" },
+                    ),
+                    testMessage = result.fold(
+                        onSuccess = { "离线语音包已下载" },
+                        onFailure = { error -> "下载失败：${error.message ?: "未知错误"}" },
+                    ),
+                )
+            }
         }
     }
 

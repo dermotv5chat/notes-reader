@@ -15,6 +15,7 @@ import com.andriod.reader.domain.PracticeMode
 import com.andriod.reader.domain.RepeatPeriod
 import com.andriod.reader.domain.PracticeDayEntry
 import com.andriod.reader.domain.PracticeEvent
+import com.andriod.reader.domain.TtsPresynthUiState
 import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 import java.time.Instant
@@ -73,6 +75,12 @@ data class ReaderUiState(
     val canScheduleAfterNoteEnd: Boolean = false,
     val backgroundNoteTitle: String? = null,
     val notificationPermissionDenied: Boolean = false,
+    val presynthState: TtsPresynthUiState = TtsPresynthUiState.Hidden,
+    val presynthHint: String? = null,
+    val presynthProgress: String? = null,
+    val presynthCharCount: Int = 0,
+    val presynthButtonEnabled: Boolean = true,
+    val presynthSnackbar: String? = null,
     val blocks: List<NoteBlock> = emptyList(),
     val todayPractice: Map<String, PracticeDayEntry> = emptyMap(),
     val practiceMeta: Map<String, BlockPracticeDisplayMeta> = emptyMap(),
@@ -97,6 +105,8 @@ class ReaderViewModel @Inject constructor(
     private var controller: com.andriod.reader.service.TtsController? = null
     private var lastHostContext: Context? = null
     private var pendingStartAfterPermission = false
+    private var lastPresynthState: TtsPresynthUiState = TtsPresynthUiState.Hidden
+    private var presynthCollectJob: Job? = null
 
     companion object {
         private const val NOTIFICATION_PERMISSION_MESSAGE =
@@ -120,6 +130,57 @@ class ReaderViewModel @Inject constructor(
                         canSelectRepeatAll = snapshot.items.isNotEmpty(),
                     )
                 }
+            }
+        }
+    }
+
+    private fun syncPresynthProgress(progress: com.andriod.reader.service.synthesis.TtsPreSynthProgress) {
+        val backend = _uiState.value.speechBackend
+        val canPrepare = TtsPlaybackManager.canPreparePresynth()
+        val buttonEnabled = when (backend) {
+            TtsSpeechBackend.ONLINE_EDGE -> canPrepare
+            TtsSpeechBackend.OFFLINE_SHERPA -> TtsPlaybackManager.sherpaModelInstalled()
+            TtsSpeechBackend.SYSTEM -> false
+        }
+        val hint = when {
+            backend == TtsSpeechBackend.ONLINE_EDGE && !canPrepare &&
+                progress.state != TtsPresynthUiState.Preparing ->
+                "当前无网络，无法生成；可改用离线高质量或系统朗读"
+            backend == TtsSpeechBackend.OFFLINE_SHERPA && !TtsPlaybackManager.sherpaModelInstalled() &&
+                progress.state != TtsPresynthUiState.Ready ->
+                "请先在设置中下载离线语音包"
+            else -> progress.hint
+        }
+        val snackbar = if (
+            progress.state == TtsPresynthUiState.Ready &&
+            lastPresynthState == TtsPresynthUiState.Preparing
+        ) {
+            "语音已生成"
+        } else {
+            null
+        }
+        lastPresynthState = progress.state
+        _uiState.update {
+            it.copy(
+                presynthState = progress.state,
+                presynthHint = hint,
+                presynthProgress = progress.chunkProgress,
+                presynthCharCount = progress.charCount,
+                presynthButtonEnabled = buttonEnabled || progress.state == TtsPresynthUiState.Preparing,
+                presynthSnackbar = snackbar ?: it.presynthSnackbar,
+            )
+        }
+    }
+
+    fun clearPresynthSnackbar() {
+        _uiState.update { it.copy(presynthSnackbar = null) }
+    }
+
+    private fun startPresynthProgressCollection() {
+        presynthCollectJob?.cancel()
+        presynthCollectJob = viewModelScope.launch {
+            TtsPlaybackManager.presynthProgress()?.collect { progress ->
+                syncPresynthProgress(progress)
             }
         }
     }
@@ -221,6 +282,10 @@ class ReaderViewModel @Inject constructor(
             controller = tts
             refreshVoiceOptions(tts)
             syncFromSession(TtsPlaybackManager.session.value)
+            _uiState.value.note?.content?.let { content ->
+                TtsPlaybackManager.refreshPresynthForNote(content)
+            }
+            startPresynthProgressCollection()
             diagnosticLog.i("Reader", "initTts ready backend=${tts.speechBackend()}")
             _uiState.update {
                 it.copy(
@@ -237,6 +302,7 @@ class ReaderViewModel @Inject constructor(
         val backend = tts.speechBackend()
         val activeId = when (backend) {
             TtsSpeechBackend.ONLINE_EDGE -> settingsStore.getEdgeTtsVoiceId()
+            TtsSpeechBackend.OFFLINE_SHERPA -> "sherpa-vits-zh"
             TtsSpeechBackend.SYSTEM ->
                 tts.diagnostics().voiceName?.takeIf { id -> options.any { it.id == id } }
                     ?: _uiState.value.selectedVoiceId
@@ -261,12 +327,14 @@ class ReaderViewModel @Inject constructor(
     fun onSpeechRateChange(rate: Float) {
         settingsStore.saveDefaultSpeechRate(rate)
         controller?.setSpeechRate(rate)
+        _uiState.value.note?.content?.let { TtsPlaybackManager.refreshPresynthForNote(it) }
         _uiState.update { it.copy(speechRate = rate) }
     }
 
     fun onSpeechPitchChange(pitch: Float) {
         settingsStore.saveDefaultSpeechPitch(pitch)
         controller?.setPitch(pitch)
+        _uiState.value.note?.content?.let { TtsPlaybackManager.refreshPresynthForNote(it) }
         _uiState.update { it.copy(speechPitch = pitch) }
     }
 
@@ -368,7 +436,11 @@ class ReaderViewModel @Inject constructor(
 
     fun onVoiceSelected(voiceId: String) {
         settingsStore.saveSelectedVoiceId(voiceId)
+        if (_uiState.value.speechBackend == TtsSpeechBackend.ONLINE_EDGE) {
+            settingsStore.saveEdgeTtsVoiceId(voiceId)
+        }
         controller?.applySelectedVoice(voiceId)
+        _uiState.value.note?.content?.let { TtsPlaybackManager.refreshPresynthForNote(it) }
         _uiState.update {
             it.copy(selectedVoiceId = voiceId, voicePickerExpanded = false)
         }
@@ -394,6 +466,8 @@ class ReaderViewModel @Inject constructor(
             tts.setSpeechRate(_uiState.value.speechRate)
             tts.setPitch(_uiState.value.speechPitch)
             refreshVoiceOptions(tts)
+            _uiState.value.note?.content?.let { TtsPlaybackManager.refreshPresynthForNote(it) }
+            startPresynthProgressCollection()
             _uiState.update {
                 it.copy(
                     speechBackend = backend,
@@ -492,6 +566,8 @@ class ReaderViewModel @Inject constructor(
 
         if (state.isPlaying) {
             controller?.pause()
+        } else if (state.presynthState == TtsPresynthUiState.Preparing) {
+            _uiState.update { it.copy(ttsError = "正在生成语音，请稍候…") }
         } else if (!session.hasActiveSession || session.fileName != note.fileName) {
             if (note.content.isBlank()) {
                 _uiState.update { it.copy(ttsError = "笔记内容为空") }
@@ -536,9 +612,30 @@ class ReaderViewModel @Inject constructor(
         return true
     }
 
+    fun onPresynthClick() {
+        val note = _uiState.value.note ?: return
+        val state = _uiState.value.presynthState
+        when (state) {
+            TtsPresynthUiState.Preparing -> TtsPlaybackManager.cancelPresynth()
+            TtsPresynthUiState.Ready -> {
+                TtsPlaybackManager.preparePresynth(note.content, forceRegenerate = true)
+            }
+            TtsPresynthUiState.Stale,
+            TtsPresynthUiState.Failed,
+            TtsPresynthUiState.NotPrepared,
+            -> TtsPlaybackManager.preparePresynth(note.content, forceRegenerate = state != TtsPresynthUiState.NotPrepared)
+            TtsPresynthUiState.Hidden -> Unit
+        }
+    }
+
+    fun onPresynthCancel() {
+        TtsPlaybackManager.cancelPresynth()
+    }
+
     fun refreshNote() {
         val refreshed = noteRepository.getNote(fileName) ?: return
         val blocks = practiceRepository.parseBlocks(refreshed.content, refreshed.fileName)
+        TtsPlaybackManager.refreshPresynthForNote(refreshed.content)
         _uiState.update { current ->
             current.copy(
                 note = refreshed,

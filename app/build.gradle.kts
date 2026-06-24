@@ -80,6 +80,8 @@ dependencies {
     implementation(libs.media)
     implementation(libs.media3.exoplayer)
     implementation(libs.coroutines.android)
+    implementation(libs.commons.compress)
+    implementation(libs.sherpa.onnx)
     testImplementation(libs.junit)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation("androidx.compose.ui:ui-test-junit4")

@@ -25,5 +25,7 @@ class TtsPlaylistViewModel @Inject constructor(
 
     fun playItem(fileName: String) = playlistManager.playItem(context, fileName)
 
+    fun playFromStart() = playlistManager.playFromStart(context)
+
     fun contains(fileName: String): Boolean = playlistManager.contains(fileName)
 }

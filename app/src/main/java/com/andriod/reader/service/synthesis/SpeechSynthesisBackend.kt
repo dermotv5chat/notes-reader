@@ -17,6 +17,12 @@ interface SpeechSynthesisBackend {
         onComplete: () -> Unit,
         onError: (String) -> Unit,
     )
+    suspend fun synthesizeFullText(
+        text: String,
+        outputFile: java.io.File,
+        speechRate: Float,
+        speechPitch: Float,
+    ): java.io.File
     fun pause()
     fun resume()
     fun stop()

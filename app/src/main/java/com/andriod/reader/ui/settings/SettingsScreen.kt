@@ -179,6 +179,10 @@ fun SettingsScreen(
                 onVoiceSelected = viewModel::onVoiceSelected,
                 onSpeechBackendChange = viewModel::onSpeechBackendChange,
                 voicePickerExpanded = uiState.voicePickerExpanded,
+                sherpaModelInstalled = uiState.sherpaModelInstalled,
+                isDownloadingSherpaModel = uiState.isDownloadingSherpaModel,
+                sherpaDownloadHint = uiState.sherpaDownloadHint,
+                onDownloadSherpaModel = viewModel::downloadSherpaModel,
             )
             OutlinedButton(
                 onClick = viewModel::previewTts,

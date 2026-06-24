@@ -12,7 +12,7 @@ import com.andriod.reader.data.local.AppDiagnosticLog
 import java.io.File
 
 /**
- * Plays synthesized MP3 files for one utterance at a time (Phase 1 online backend).
+ * Plays synthesized audio files (single utterance or presynth playlist).
  */
 class ExoPlayerSpeechPlayer(
     context: Context,
@@ -21,22 +21,18 @@ class ExoPlayerSpeechPlayer(
     private val appContext = context.applicationContext
     private var player: ExoPlayer? = null
     private var onDone: (() -> Unit)? = null
+    private var onChunkAdvanced: ((Int, Int) -> Unit)? = null
     private var onError: ((String) -> Unit)? = null
-    private var currentFile: File? = null
+    private var deleteAfterComplete = true
+    private var playlistFiles: List<File> = emptyList()
+    private var playlistIndex = 0
     private var paused = false
 
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             when (playbackState) {
                 Player.STATE_READY -> diagnosticLog?.d("ExoPlayer", "state=READY")
-                Player.STATE_ENDED -> {
-                    diagnosticLog?.i("ExoPlayer", "state=ENDED")
-                    val done = onDone
-                    onDone = null
-                    onError = null
-                    cleanupCurrentFile()
-                    done?.invoke()
-                }
+                Player.STATE_ENDED -> handleEnded()
             }
         }
 
@@ -45,11 +41,35 @@ class ExoPlayerSpeechPlayer(
             val err = onError
             onDone = null
             onError = null
-            cleanupCurrentFile()
+            onChunkAdvanced = null
+            playlistFiles = emptyList()
             player?.stop()
             player?.clearMediaItems()
             err?.invoke("播放失败：${error.message ?: "未知错误"}")
         }
+    }
+
+    private fun handleEnded() {
+        if (playlistFiles.size > 1 && playlistIndex < playlistFiles.lastIndex) {
+            if (deleteAfterComplete) {
+                playlistFiles.getOrNull(playlistIndex)?.delete()
+            }
+            playlistIndex++
+            onChunkAdvanced?.invoke(playlistIndex, playlistFiles.size)
+            playCurrentInPlaylist()
+            return
+        }
+        if (deleteAfterComplete) {
+            playlistFiles.getOrNull(playlistIndex)?.delete()
+        }
+        diagnosticLog?.i("ExoPlayer", "state=ENDED")
+        val done = onDone
+        onDone = null
+        onError = null
+        onChunkAdvanced = null
+        playlistFiles = emptyList()
+        playlistIndex = 0
+        done?.invoke()
     }
 
     fun ensurePlayer(): ExoPlayer {
@@ -69,18 +89,50 @@ class ExoPlayerSpeechPlayer(
         }
     }
 
-    fun play(file: File, utteranceId: String, onDone: () -> Unit, onError: (String) -> Unit) {
-        if (!file.exists() || file.length() < 100L) {
-            diagnosticLog?.e("ExoPlayer", "invalid file utterance=$utteranceId size=${file.length()}")
+    fun play(
+        file: File,
+        utteranceId: String,
+        onDone: () -> Unit,
+        onError: (String) -> Unit,
+        deleteAfterComplete: Boolean = true,
+    ) {
+        playPlaylist(
+            files = listOf(file),
+            utteranceId = utteranceId,
+            onDone = onDone,
+            onError = onError,
+            onChunkAdvanced = null,
+            deleteAfterComplete = deleteAfterComplete,
+        )
+    }
+
+    fun playPlaylist(
+        files: List<File>,
+        utteranceId: String,
+        onDone: () -> Unit,
+        onError: (String) -> Unit,
+        onChunkAdvanced: ((Int, Int) -> Unit)? = null,
+        deleteAfterComplete: Boolean = false,
+    ) {
+        val valid = files.filter { it.exists() && it.length() > 100L }
+        if (valid.isEmpty()) {
+            diagnosticLog?.e("ExoPlayer", "invalid playlist utterance=$utteranceId")
             onError("播放失败：音频文件无效")
             return
         }
         this.onDone = onDone
         this.onError = onError
+        this.onChunkAdvanced = onChunkAdvanced
+        this.deleteAfterComplete = deleteAfterComplete
+        playlistFiles = valid
+        playlistIndex = 0
         paused = false
-        cleanupCurrentFile()
-        currentFile = file
-        diagnosticLog?.i("ExoPlayer", "play utterance=$utteranceId bytes=${file.length()}")
+        diagnosticLog?.i("ExoPlayer", "play playlist utterance=$utteranceId files=${valid.size}")
+        playCurrentInPlaylist()
+    }
+
+    private fun playCurrentInPlaylist() {
+        val file = playlistFiles.getOrNull(playlistIndex) ?: return
         val exo = ensurePlayer()
         exo.stop()
         exo.clearMediaItems()
@@ -103,9 +155,14 @@ class ExoPlayerSpeechPlayer(
         paused = false
         player?.stop()
         player?.clearMediaItems()
-        cleanupCurrentFile()
+        if (deleteAfterComplete) {
+            playlistFiles.getOrNull(playlistIndex)?.delete()
+        }
+        playlistFiles = emptyList()
+        playlistIndex = 0
         onDone = null
         onError = null
+        onChunkAdvanced = null
     }
 
     fun setSpeechRate(rate: Float) {
@@ -121,8 +178,10 @@ class ExoPlayerSpeechPlayer(
 
     fun isPaused(): Boolean = paused
 
-    private fun cleanupCurrentFile() {
-        currentFile?.delete()
-        currentFile = null
+    fun currentPositionMs(): Long = player?.currentPosition ?: 0L
+
+    fun durationMs(): Long {
+        val duration = player?.duration ?: 0L
+        return if (duration > 0) duration else 0L
     }
 }

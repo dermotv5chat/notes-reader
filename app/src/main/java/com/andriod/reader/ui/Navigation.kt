@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -33,6 +36,7 @@ import com.andriod.reader.ui.editor.EditorScreen
 import com.andriod.reader.ui.guide.PrinciplesGuideScreen
 import com.andriod.reader.ui.list.NoteListScreen
 import com.andriod.reader.ui.player.TtsMiniPlayerBar
+import com.andriod.reader.ui.player.TtsPlaylistScreen
 import com.andriod.reader.ui.player.TtsPlaylistViewModel
 import com.andriod.reader.ui.player.TtsQueueSheet
 import com.andriod.reader.ui.reader.PracticeCalendarScreen
@@ -41,6 +45,7 @@ import com.andriod.reader.ui.settings.SettingsScreen
 
 object Routes {
     const val NOTES = "notes"
+    const val PLAYLIST = "playlist"
     const val SETTINGS = "settings"
     const val PRINCIPLES_GUIDE = "principles_guide"
     const val EDITOR = "editor?fileName={fileName}"
@@ -85,12 +90,15 @@ fun ReaderApp(
     val playlistViewModel: TtsPlaylistViewModel = hiltViewModel()
     val playlistSnapshot by playlistViewModel.snapshot.collectAsState()
     var showQueueSheet by remember { mutableStateOf(false) }
-    val showBottomBar = currentRoute == Routes.NOTES || currentRoute == Routes.SETTINGS
+    val showBottomBar = currentRoute == Routes.NOTES ||
+        currentRoute == Routes.PLAYLIST ||
+        currentRoute == Routes.SETTINGS
     val isReader = currentRoute?.startsWith("reader") == true
     val isEditor = currentRoute?.startsWith("editor") == true
     val isPrinciplesGuide = currentRoute == Routes.PRINCIPLES_GUIDE
     val showMiniBar = session.hasActiveSession && !isReader && (
         currentRoute == Routes.NOTES ||
+            currentRoute == Routes.PLAYLIST ||
             currentRoute == Routes.SETTINGS ||
             isEditor
         )
@@ -151,6 +159,32 @@ fun ReaderApp(
                                 label = { Text("笔记") },
                             )
                             NavigationBarItem(
+                                selected = currentRoute == Routes.PLAYLIST,
+                                onClick = {
+                                    navController.navigate(Routes.PLAYLIST) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                icon = {
+                                    BadgedBox(
+                                        badge = {
+                                            if (playlistSnapshot.items.isNotEmpty()) {
+                                                Badge {
+                                                    Text("${playlistSnapshot.items.size}")
+                                                }
+                                            }
+                                        },
+                                    ) {
+                                        Icon(Icons.Default.QueueMusic, contentDescription = null)
+                                    }
+                                },
+                                label = { Text("播放列表") },
+                            )
+                            NavigationBarItem(
                                 selected = currentRoute == Routes.SETTINGS,
                                 onClick = {
                                     navController.navigate(Routes.SETTINGS) {
@@ -192,6 +226,15 @@ fun ReaderApp(
                         playlistViewModel.add(fileName, title)
                     },
                     isInQueue = playlistViewModel::contains,
+                )
+            }
+            composable(Routes.PLAYLIST) {
+                TtsPlaylistScreen(
+                    onOpenNote = { fileName ->
+                        navController.navigate(Routes.reader(fileName)) {
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
             composable(Routes.SETTINGS) {

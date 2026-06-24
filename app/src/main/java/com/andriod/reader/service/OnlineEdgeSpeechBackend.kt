@@ -8,6 +8,7 @@ import com.andriod.reader.service.edge.EdgeTtsClient
 import com.andriod.reader.service.edge.EdgeTtsVoices
 import com.andriod.reader.service.edge.ExoPlayerSpeechPlayer
 import com.andriod.reader.service.edge.NetworkAvailability
+import com.andriod.reader.service.synthesis.EdgeFullTextSynthesizer
 import com.andriod.reader.service.synthesis.SpeechSynthesisBackend
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -29,6 +30,7 @@ class OnlineEdgeSpeechBackend(
 ) : SpeechSynthesisBackend {
     private val appContext = context.applicationContext
     private val client = EdgeTtsClient(diagnosticLog)
+    private val fullTextSynthesizer = EdgeFullTextSynthesizer(appContext, settingsStore, diagnosticLog)
     private val player = ExoPlayerSpeechPlayer(appContext, diagnosticLog)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var synthesisJob: Job? = null
@@ -64,6 +66,15 @@ class OnlineEdgeSpeechBackend(
     }
 
     override fun speak(
+        text: String,
+        utteranceId: String,
+        onComplete: () -> Unit,
+        onError: (String) -> Unit,
+    ) {
+        speakInternal(text, utteranceId, onComplete, onError)
+    }
+
+    private fun speakInternal(
         text: String,
         utteranceId: String,
         onDone: () -> Unit,
@@ -116,6 +127,13 @@ class OnlineEdgeSpeechBackend(
             }
         }
     }
+
+    override suspend fun synthesizeFullText(
+        text: String,
+        outputFile: File,
+        speechRate: Float,
+        speechPitch: Float,
+    ): File = fullTextSynthesizer.synthesizeToFile(text, outputFile, speechRate, speechPitch)
 
     override fun pause() {
         player.pause()

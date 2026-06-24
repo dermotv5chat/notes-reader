@@ -1,5 +1,6 @@
 package com.andriod.reader.ui.player
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,6 +37,11 @@ object TtsQueueSheetTestTags {
     const val CLEAR_BUTTON = "tts_queue_clear"
 }
 
+object TtsPlaylistScreenTestTags {
+    const val SCREEN = "tts_playlist_screen"
+    const val PLAY_ALL_BUTTON = "tts_playlist_play_all"
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TtsQueueSheet(
@@ -70,6 +76,8 @@ internal fun TtsQueueSheetContent(
     onRemoveItem: (String) -> Unit,
     onClear: () -> Unit,
     onRepeatModeChange: (TtsQueueRepeatMode) -> Unit,
+    showTitle: Boolean = true,
+    onOpenItem: ((String) -> Unit)? = null,
 ) {
     val canRepeatAll = TtsPlaylistPolicy.canSelectRepeatAll(snapshot.items)
     Column(
@@ -79,14 +87,16 @@ internal fun TtsQueueSheetContent(
             .padding(bottom = 32.dp)
             .testTag(TtsQueueSheetTestTags.SHEET),
     ) {
-        Text(
-            text = "播放列表",
-            style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.padding(bottom = 16.dp),
-        )
+        if (showTitle) {
+            Text(
+                text = "播放列表",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(bottom = 16.dp),
+            )
+        }
         if (snapshot.items.isEmpty()) {
             Text(
-                text = "列表为空，从笔记列表或阅读页加入",
+                text = "列表为空，在笔记列表左滑或阅读页加入",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 16.dp),
@@ -99,6 +109,7 @@ internal fun TtsQueueSheetContent(
                     modifier = if (index == 0) Modifier.testTag(TtsQueueSheetTestTags.ITEM) else Modifier,
                     onPlay = { onPlayItem(item.fileName) },
                     onRemove = { onRemoveItem(item.fileName) },
+                    onOpen = onOpenItem?.let { open -> { open(item.fileName) } },
                 )
             }
         }
@@ -154,6 +165,7 @@ private fun TtsQueueItemRow(
     isPlaying: Boolean,
     onPlay: () -> Unit,
     onRemove: () -> Unit,
+    onOpen: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -163,7 +175,11 @@ private fun TtsQueueItemRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .then(if (onOpen != null) Modifier.clickable(onClick = onOpen) else Modifier),
+        ) {
             Text(
                 text = item.title,
                 style = MaterialTheme.typography.bodyMedium,

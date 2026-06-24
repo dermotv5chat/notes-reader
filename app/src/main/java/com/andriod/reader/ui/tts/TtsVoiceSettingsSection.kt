@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -37,6 +39,10 @@ fun TtsVoiceSettingsSection(
     onSpeechBackendChange: (TtsSpeechBackend) -> Unit,
     voicePickerExpanded: Boolean,
     showBackendSelector: Boolean = true,
+    sherpaModelInstalled: Boolean = false,
+    isDownloadingSherpaModel: Boolean = false,
+    sherpaDownloadHint: String? = null,
+    onDownloadSherpaModel: () -> Unit = {},
 ) {
     if (showBackendSelector) {
         Text("朗读引擎", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
@@ -53,6 +59,11 @@ fun TtsVoiceSettingsSection(
                 label = { Text("系统 TTS") },
             )
             FilterChip(
+                selected = speechBackend == TtsSpeechBackend.OFFLINE_SHERPA,
+                onClick = { onSpeechBackendChange(TtsSpeechBackend.OFFLINE_SHERPA) },
+                label = { Text("离线高质量") },
+            )
+            FilterChip(
                 selected = speechBackend == TtsSpeechBackend.ONLINE_EDGE,
                 onClick = { onSpeechBackendChange(TtsSpeechBackend.ONLINE_EDGE) },
                 label = { Text("在线高质量") },
@@ -61,12 +72,46 @@ fun TtsVoiceSettingsSection(
         Text(
             when (speechBackend) {
                 TtsSpeechBackend.SYSTEM -> "离线可用；推荐安装 Google TTS 并选 neural 在线音色。"
-                TtsSpeechBackend.ONLINE_EDGE -> "Microsoft Edge neural，需联网；无网时自动回退系统 TTS。"
+                TtsSpeechBackend.ONLINE_EDGE -> "Microsoft Edge neural，需联网；整篇预合成后播放更连贯。"
+                TtsSpeechBackend.OFFLINE_SHERPA -> "Sherpa-onnx 离线 neural；整篇预合成，无需联网。"
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.outline,
             modifier = Modifier.padding(bottom = 12.dp),
         )
+    }
+
+    if (speechBackend == TtsSpeechBackend.OFFLINE_SHERPA) {
+        Text("离线语音包", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+        Text(
+            if (sherpaModelInstalled) {
+                "已安装中文 VITS 模型，可在阅读页生成语音。"
+            } else {
+                "尚未下载离线语音包（约 50 MB）。"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+        sherpaDownloadHint?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+        Button(
+            onClick = onDownloadSherpaModel,
+            enabled = !isDownloadingSherpaModel && !sherpaModelInstalled,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+        ) {
+            if (isDownloadingSherpaModel) {
+                CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
+            }
+            Text(if (sherpaModelInstalled) "已下载" else "下载离线语音包")
+        }
     }
 
     if (speechBackend == TtsSpeechBackend.SYSTEM && voiceOptions.isNotEmpty()) {

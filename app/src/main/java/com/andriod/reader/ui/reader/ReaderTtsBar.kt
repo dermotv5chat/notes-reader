@@ -64,10 +64,44 @@ fun ReaderPlaybackBar(
     onOpenQueue: () -> Unit,
     onOpenTtsSettings: () -> Unit,
     onOpenSleepTimer: () -> Unit,
+    onPresynthClick: () -> Unit = {},
     onOpenNotificationSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+        if (uiState.presynthState != com.andriod.reader.domain.TtsPresynthUiState.Hidden) {
+            uiState.presynthHint?.let { hint ->
+                Text(
+                    text = buildString {
+                        append(hint)
+                        uiState.presynthProgress?.let { append("（$it）") }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(bottom = 4.dp)
+                        .testTag("reader_presynth_status"),
+                )
+            }
+            OutlinedButton(
+                onClick = onPresynthClick,
+                enabled = uiState.presynthButtonEnabled || uiState.presynthState == com.andriod.reader.domain.TtsPresynthUiState.Preparing,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp)
+                    .testTag("reader_presynth_button"),
+            ) {
+                Text(
+                    when (uiState.presynthState) {
+                        com.andriod.reader.domain.TtsPresynthUiState.Preparing -> "取消"
+                        com.andriod.reader.domain.TtsPresynthUiState.Ready -> "重新生成"
+                        com.andriod.reader.domain.TtsPresynthUiState.Stale -> "更新语音"
+                        com.andriod.reader.domain.TtsPresynthUiState.Failed -> "重试"
+                        else -> "生成语音"
+                    },
+                )
+            }
+        }
         when {
             uiState.isTtsInitializing -> {
                 Text("正在初始化语音引擎…", modifier = Modifier.padding(bottom = 4.dp))
@@ -100,7 +134,7 @@ fun ReaderPlaybackBar(
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
-                if (uiState.segmentTotal > 0) {
+                if (uiState.segmentTotal > 1) {
                     Text(
                         "段落 ${uiState.segmentIndex + 1} / ${uiState.segmentTotal}",
                         style = MaterialTheme.typography.bodySmall,
@@ -108,7 +142,7 @@ fun ReaderPlaybackBar(
                     )
                 }
             }
-            uiState.segmentTotal > 0 -> {
+            uiState.segmentTotal > 1 -> {
                 Text(
                     "段落 ${uiState.segmentIndex + 1} / ${uiState.segmentTotal}",
                     style = MaterialTheme.typography.bodySmall,

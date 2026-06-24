@@ -142,6 +142,11 @@ class TtsPlaylistManager @Inject constructor(
         return playAtIndex(context, index)
     }
 
+    fun playFromStart(context: Context): Boolean {
+        if (_state.value.items.isEmpty()) return false
+        return playAtIndex(context, 0)
+    }
+
     fun syncLoopToController() {
         val loop = _state.value.repeatMode == TtsQueueRepeatMode.REPEAT_ONE
         TtsPlaybackManager.getOrNull()?.setLoopEnabled(loop)

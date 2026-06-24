@@ -5,4 +5,6 @@ enum class TtsSpeechBackend {
     SYSTEM,
     /** Microsoft Edge 在线 neural（需联网，非官方接口） */
     ONLINE_EDGE,
+    /** Sherpa-onnx 离线 neural（需下载语音包） */
+    OFFLINE_SHERPA,
 }

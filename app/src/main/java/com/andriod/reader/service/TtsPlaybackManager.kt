@@ -4,6 +4,7 @@ import android.content.Context
 import com.andriod.reader.data.local.AppDiagnosticLog
 import com.andriod.reader.data.local.MarkdownPlainText
 import com.andriod.reader.data.remote.SettingsStore
+import com.andriod.reader.service.synthesis.TtsPreSynthProgress
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -116,6 +117,30 @@ object TtsPlaybackManager {
     }
 
     fun getOrNull(): TtsController? = controller
+
+    fun presynthProgress(): StateFlow<TtsPreSynthProgress>? = controller?.presynthProgress()
+
+    fun refreshPresynthForNote(content: String) {
+        controller?.refreshPresynthForText(content)
+    }
+
+    fun canPreparePresynth(): Boolean = controller?.canPreparePresynth() == true
+
+    fun isPresynthReady(): Boolean = controller?.isPresynthReady() == true
+
+    fun preparePresynth(
+        content: String,
+        forceRegenerate: Boolean = false,
+        autoPlayWhenReady: Boolean = false,
+    ) {
+        controller?.preparePresynth(content, forceRegenerate, autoPlayWhenReady)
+    }
+
+    fun cancelPresynth() {
+        controller?.cancelPresynth()
+    }
+
+    fun sherpaModelInstalled(): Boolean = controller?.sherpaModelInstalled() == true
 
     suspend fun awaitReady(context: Context): TtsController {
         val ctrl = getOrCreate(context)
