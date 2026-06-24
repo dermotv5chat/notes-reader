@@ -46,6 +46,18 @@ class MarkdownBlockParserTest {
     }
 
     @Test
+    fun parseLine_starBullet() {
+        val block = MarkdownBlockParser.parseLine(
+            fileName = "note.md",
+            lineIndex = 0,
+            rawLine = "* **列表项**",
+        )
+        assertTrue(block is NoteBlock.Bullet)
+        block as NoteBlock.Bullet
+        assertEquals("**列表项**", block.text)
+    }
+
+    @Test
     fun parse_parsesMultipleLines() {
         val content = """
             # 标题

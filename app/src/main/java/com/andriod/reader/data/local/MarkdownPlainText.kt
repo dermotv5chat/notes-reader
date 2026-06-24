@@ -16,7 +16,7 @@ object MarkdownPlainText {
     private val blockquotePrefix = Regex("""(?m)^>\s+""")
     private val headingPrefix = Regex("""(?m)^#{1,6}\s+""")
     private val orderedListPrefix = Regex("""(?m)^\d+\.\s+""")
-    private val unorderedListPrefix = Regex("""(?m)^-\s+""")
+    private val unorderedListPrefix = Regex("""(?m)^[-*]\s+""")
     private val boldAsterisk = Regex("""\*\*([^*]+)\*\*""")
     private val boldUnderscore = Regex("""__([^_]+)__""")
     private val italicAsterisk = Regex("""(?<!\*)\*([^*]+)\*(?!\*)""")

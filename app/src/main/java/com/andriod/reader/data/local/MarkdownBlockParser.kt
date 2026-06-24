@@ -7,7 +7,7 @@ object MarkdownBlockParser {
     private val todoUncheckedRegex = Regex("""^- \[ \] (.*)$""")
     private val todoCheckedRegex = Regex("""^- \[[xX]\] (.*)$""")
     private val orderedRegex = Regex("""^(\d+)\.\s+(.*)$""")
-    private val bulletRegex = Regex("""^-\s+(.*)$""")
+    private val bulletRegex = Regex("""^[-*]\s+(.*)$""")
     private val calloutRegex = Regex("""^>\s*\[!([^\]|]+)(?:\|([^\]]+))?\]\s*(.*)$""")
 
     fun parse(content: String, fileName: String, calloutIds: List<String>): List<NoteBlock> {

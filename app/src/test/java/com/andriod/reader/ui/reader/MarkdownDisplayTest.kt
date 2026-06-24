@@ -2,6 +2,7 @@ package com.andriod.reader.ui.reader
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import org.junit.Assert.assertEquals
@@ -28,5 +29,20 @@ class MarkdownDisplayTest {
     fun buildMarkdown_rendersCheckboxGlyph() {
         val result = buildMarkdownAnnotatedString("- [ ] 买牛奶", baseStyle)
         assertEquals("☐ 买牛奶", result.text)
+    }
+
+    @Test
+    fun buildMarkdown_rendersStarBulletWithBold() {
+        val result = buildMarkdownAnnotatedString("* **粗体项**", baseStyle)
+        assertEquals("• 粗体项", result.text)
+        assertTrue(result.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+    }
+
+    @Test
+    fun buildInlineMarkdown_rendersUnderscoreSyntax() {
+        val result = buildInlineMarkdownAnnotatedString("__粗体__与_斜体_", baseStyle)
+        assertEquals("粗体与斜体", result.text)
+        assertTrue(result.spanStyles.any { it.item.fontWeight == FontWeight.Bold })
+        assertTrue(result.spanStyles.any { it.item.fontStyle == FontStyle.Italic })
     }
 }

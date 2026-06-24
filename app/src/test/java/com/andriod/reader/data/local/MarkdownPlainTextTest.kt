@@ -31,6 +31,12 @@ class MarkdownPlainTextTest {
     }
 
     @Test
+    fun stripForSpeech_stripsStarListPrefix() {
+        val result = MarkdownPlainText.stripForSpeech("* 第一项\n- 第二项")
+        assertEquals("第一项\n第二项", result)
+    }
+
+    @Test
     fun stripForSpeech_stripsListPrefixes() {
         val result = MarkdownPlainText.stripForSpeech("- 第一项\n1. 第二项")
         assertEquals("第一项\n第二项", result)

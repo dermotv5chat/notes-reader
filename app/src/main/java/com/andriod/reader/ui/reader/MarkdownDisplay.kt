@@ -29,6 +29,32 @@ fun MarkdownContent(
     )
 }
 
+@Composable
+fun InlineMarkdownText(
+    text: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.bodyLarge,
+    prefix: String? = null,
+    textDecoration: TextDecoration? = null,
+) {
+    val bodyColor = style.color.takeIf { it != Color.Unspecified } ?: Color.Unspecified
+    Text(
+        text = buildAnnotatedString {
+            prefix?.let { append(it) }
+            if (textDecoration != null) {
+                withStyle(SpanStyle(textDecoration = textDecoration, color = bodyColor)) {
+                    appendInlineMarkdown(text, style, bodyColor)
+                }
+            } else {
+                appendInlineMarkdown(text, style, bodyColor)
+            }
+        },
+        style = style,
+        lineHeight = style.lineHeight * 1.4f,
+        modifier = modifier,
+    )
+}
+
 internal fun buildMarkdownAnnotatedString(
     text: String,
     baseStyle: TextStyle,
@@ -42,6 +68,17 @@ internal fun buildMarkdownAnnotatedString(
             if (index > 0) append('\n')
             appendMarkdownLine(rawLine, baseStyle, bodyColor)
         }
+    }
+}
+
+internal fun buildInlineMarkdownAnnotatedString(
+    text: String,
+    baseStyle: TextStyle,
+): AnnotatedString {
+    val bodyColor = baseStyle.color.takeIf { it != Color.Unspecified }
+        ?: Color.Unspecified
+    return buildAnnotatedString {
+        appendInlineMarkdown(text, baseStyle, bodyColor)
     }
 }
 
@@ -92,7 +129,7 @@ private fun AnnotatedString.Builder.appendMarkdownLine(
         return
     }
 
-    val bullet = Regex("""^-\s+(.*)$""").find(rawLine)
+    val bullet = Regex("""^[-*]\s+(.*)$""").find(rawLine)
     if (bullet != null) {
         append("• ")
         appendInlineMarkdown(bullet.groupValues[1], baseStyle, bodyColor)
@@ -125,21 +162,39 @@ private fun AnnotatedString.Builder.appendInlineMarkdown(
             continue
         }
 
-        val bold = Regex("""^\*\*([^*]+)\*\*""").find(slice)
-        if (bold != null) {
+        val boldAsterisk = Regex("""^\*\*([^*]+)\*\*""").find(slice)
+        if (boldAsterisk != null) {
             withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = bodyColor)) {
-                append(bold.groupValues[1])
+                append(boldAsterisk.groupValues[1])
             }
-            index += bold.value.length
+            index += boldAsterisk.value.length
             continue
         }
 
-        val italic = Regex("""^\*([^*]+)\*""").find(slice)
-        if (italic != null) {
-            withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = bodyColor)) {
-                append(italic.groupValues[1])
+        val boldUnderscore = Regex("""^__([^_]+)__""").find(slice)
+        if (boldUnderscore != null) {
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = bodyColor)) {
+                append(boldUnderscore.groupValues[1])
             }
-            index += italic.value.length
+            index += boldUnderscore.value.length
+            continue
+        }
+
+        val italicAsterisk = Regex("""^\*([^*]+)\*""").find(slice)
+        if (italicAsterisk != null) {
+            withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = bodyColor)) {
+                append(italicAsterisk.groupValues[1])
+            }
+            index += italicAsterisk.value.length
+            continue
+        }
+
+        val italicUnderscore = Regex("""^_([^_]+)_""").find(slice)
+        if (italicUnderscore != null) {
+            withStyle(SpanStyle(fontStyle = FontStyle.Italic, color = bodyColor)) {
+                append(italicUnderscore.groupValues[1])
+            }
+            index += italicUnderscore.value.length
             continue
         }
 

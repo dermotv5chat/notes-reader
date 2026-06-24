@@ -141,7 +141,7 @@ private fun NoteBlockRow(
         Column(modifier = Modifier.weight(1f)) {
             when (block) {
                 is NoteBlock.Heading -> {
-                    Text(
+                    InlineMarkdownText(
                         text = block.text,
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontSize = when (block.level) {
@@ -154,35 +154,23 @@ private fun NoteBlockRow(
                     )
                 }
                 is NoteBlock.Todo -> {
-                    Text(
-                        text = "${if (block.checked) "☑" else "☐"} ${block.text}",
-                        style = MaterialTheme.typography.bodyLarge,
+                    InlineMarkdownText(
+                        text = block.text,
+                        prefix = "${if (block.checked) "☑" else "☐"} ",
                         textDecoration = if (block.checked) TextDecoration.LineThrough else null,
                     )
                 }
                 is NoteBlock.Callout -> {
-                    Text(
-                        text = block.text,
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
+                    InlineMarkdownText(text = block.text)
                 }
                 is NoteBlock.Bullet -> {
-                    Text(
-                        text = "• ${block.text}",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
+                    InlineMarkdownText(text = block.text, prefix = "• ")
                 }
                 is NoteBlock.Ordered -> {
-                    Text(
-                        text = "${block.number}. ${block.text}",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
+                    InlineMarkdownText(text = block.text, prefix = "${block.number}. ")
                 }
                 is NoteBlock.Paragraph -> {
-                    Text(
-                        text = block.text,
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
+                    MarkdownContent(text = block.text)
                 }
             }
         }
