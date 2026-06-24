@@ -13,7 +13,8 @@ class TtsMediaButtonReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (Intent.ACTION_MEDIA_BUTTON != intent.action) return
-        if (!TtsPlaybackManager.session.value.hasActiveSession) return
+        val session = TtsPlaybackManager.session.value
+        if (!session.hasActiveSession || (!session.isPlaying && !session.isPaused)) return
         val serviceIntent = Intent(context, TtsPlaybackService::class.java).apply {
             action = Intent.ACTION_MEDIA_BUTTON
             val keyEvent = TtsMediaButtonHandler.keyEventFrom(intent)

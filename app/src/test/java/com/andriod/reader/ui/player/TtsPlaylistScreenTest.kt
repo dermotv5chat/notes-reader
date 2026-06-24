@@ -68,4 +68,30 @@ class TtsPlaylistScreenTest {
         composeRule.onNodeWithTag(TtsPlaylistScreenTestTags.PLAY_ALL_BUTTON).assertIsDisplayed()
         composeRule.onNodeWithText("笔记 A").assertIsDisplayed()
     }
+
+    @Test
+    fun playlistScreenContent_startingPlayback_disablesPlayAll() {
+        composeRule.setContent {
+            MaterialTheme {
+                TtsPlaylistScreenContent(
+                    snapshot = TtsPlaylistSnapshot(
+                        items = listOf(
+                            TtsPlaylistItem("a.md", "笔记 A", Instant.EPOCH),
+                        ),
+                    ),
+                    session = TtsPlaybackSession(),
+                    isStartingPlayback = true,
+                    onPlayAll = {},
+                    onPlayItem = {},
+                    onRemoveItem = {},
+                    onClear = {},
+                    onRepeatModeChange = {},
+                    onOpenNote = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithTag(TtsPlaylistScreenTestTags.PLAY_ALL_BUTTON).assertIsNotEnabled()
+        composeRule.onNodeWithText("正在初始化语音引擎…").assertIsDisplayed()
+    }
 }

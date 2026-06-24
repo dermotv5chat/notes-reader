@@ -126,14 +126,16 @@ class TtsPlaylistManager @Inject constructor(
         val note = noteRepository.getNote(item.fileName) ?: return false
         if (!TtsPlaybackManager.noteHasReadableContent(note.content)) return false
         playingIndex = index
-        TtsPlaybackManager.startPlayback(
+        val started = TtsPlaybackManager.startPlayback(
             context = context,
             fileName = note.fileName,
             title = note.title,
             content = note.content,
         )
-        syncLoopToController()
-        return true
+        if (started) {
+            syncLoopToController()
+        }
+        return started
     }
 
     fun playItem(context: Context, fileName: String): Boolean {

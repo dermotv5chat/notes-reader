@@ -4,6 +4,9 @@ import android.content.Context
 import com.andriod.reader.data.local.AppDiagnosticLog
 import com.andriod.reader.data.local.MarkdownPlainText
 import com.andriod.reader.data.remote.SettingsStore
+import com.andriod.reader.domain.TtsSpeechBackend
+import com.andriod.reader.service.edge.NetworkAvailability
+import com.andriod.reader.service.synthesis.TtsPreSynthPipeline
 import com.andriod.reader.service.synthesis.TtsPreSynthProgress
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +18,9 @@ object TtsPlaybackManager {
     private var appContext: Context? = null
     private val _session = MutableStateFlow(TtsPlaybackSession())
     val session: StateFlow<TtsPlaybackSession> = _session.asStateFlow()
+
+    private val _playbackError = MutableStateFlow<String?>(null)
+    val playbackError: StateFlow<String?> = _playbackError.asStateFlow()
 
     private var sleepTimer: TtsSleepTimer? = null
     private var sleepTimerPausedWithPlayback = false
@@ -78,6 +84,19 @@ object TtsPlaybackManager {
         }
     }
 
+    private fun dispatchSpeakError(message: String) {
+        _playbackError.value = message
+        attachedErrorCallback(message)
+    }
+
+    fun reportPlaybackError(message: String) {
+        dispatchSpeakError(message)
+    }
+
+    fun clearPlaybackError() {
+        _playbackError.value = null
+    }
+
     fun getOrCreate(context: Context): TtsController {
         appContext = context.applicationContext
         ensureTimer(context)
@@ -89,7 +108,7 @@ object TtsPlaybackManager {
             diagnosticLog = diagnosticLog(context),
             onSegmentChanged = attachedSegmentCallback,
             onPlaybackStateChanged = attachedPlaybackCallback,
-            onSpeakError = attachedErrorCallback,
+            onSpeakError = ::dispatchSpeakError,
             onSessionChanged = { syncSession() },
             sleepTimerStateProvider = { sleepTimer?.snapshot() ?: TtsSleepTimerState() },
         ).also {
@@ -106,14 +125,14 @@ object TtsPlaybackManager {
         attachedSegmentCallback = onSegmentChanged
         attachedPlaybackCallback = onPlaybackStateChanged
         attachedErrorCallback = onSpeakError
-        controller?.updateCallbacks(onSegmentChanged, onPlaybackStateChanged, onSpeakError)
+        controller?.updateCallbacks(onSegmentChanged, onPlaybackStateChanged, ::dispatchSpeakError)
     }
 
     fun detachUiCallbacks() {
         attachedSegmentCallback = noopSegment
         attachedPlaybackCallback = noopPlayback
         attachedErrorCallback = noopError
-        controller?.updateCallbacks(noopSegment, noopPlayback, noopError)
+        controller?.updateCallbacks(noopSegment, noopPlayback, ::dispatchSpeakError)
     }
 
     fun getOrNull(): TtsController? = controller
@@ -125,6 +144,35 @@ object TtsPlaybackManager {
     }
 
     fun canPreparePresynth(): Boolean = controller?.canPreparePresynth() == true
+
+    fun presynthUnavailableMessage(context: Context): String? {
+        controller?.presynthUnavailableMessage()?.let { return it }
+        val backend = settingsStore(context).getTtsSpeechBackend()
+        return presynthBlockedMessage(
+            backend = backend,
+            networkConnected = NetworkAvailability.isConnected(context.applicationContext),
+            sherpaInstalled = controller?.sherpaModelInstalled() == true,
+        )
+    }
+
+    internal fun presynthBlockedMessage(
+        backend: TtsSpeechBackend,
+        networkConnected: Boolean,
+        sherpaInstalled: Boolean,
+    ): String? {
+        if (backend != TtsSpeechBackend.ONLINE_EDGE && backend != TtsSpeechBackend.OFFLINE_SHERPA) {
+            return null
+        }
+        return when (backend) {
+            TtsSpeechBackend.ONLINE_EDGE -> {
+                if (networkConnected) null else TtsPreSynthPipeline.unavailableMessageFor(backend)
+            }
+            TtsSpeechBackend.OFFLINE_SHERPA -> {
+                if (sherpaInstalled) null else TtsPreSynthPipeline.unavailableMessageFor(backend)
+            }
+            TtsSpeechBackend.SYSTEM -> null
+        }
+    }
 
     fun isPresynthReady(): Boolean = controller?.isPresynthReady() == true
 
@@ -157,8 +205,13 @@ object TtsPlaybackManager {
         title: String,
         content: String,
         withForegroundService: Boolean = true,
-    ) {
-        val previousFile = controller?.playbackSnapshot()?.fileName
+    ): Boolean {
+        val ctrl = getOrCreate(context)
+        if (!ctrl.isReady()) {
+            diagnosticLog(context).w("TtsPlayback", "startPlayback blocked: engine not ready")
+            return false
+        }
+        val previousFile = ctrl.playbackSnapshot().fileName
         if (previousFile != null && previousFile != fileName) {
             sleepTimer?.cancel()
         }
@@ -166,18 +219,26 @@ object TtsPlaybackManager {
             "TtsPlayback",
             "startPlayback file=$fileName title=$title chars=${content.length}",
         )
-        controller?.start(fileName, title, content)
-        runCatching {
-            EntryPointAccessors.fromApplication(
-                context.applicationContext,
-                TtsServiceEntryPoint::class.java,
-            ).ttsPlaylistManager().onPlaybackStarted(fileName)
+        val started = ctrl.start(fileName, title, content)
+        if (started) {
+            runCatching {
+                EntryPointAccessors.fromApplication(
+                    context.applicationContext,
+                    TtsServiceEntryPoint::class.java,
+                ).ttsPlaylistManager().onPlaybackStarted(fileName)
+            }
         }
         syncSession()
-        if (withForegroundService) {
+        if (withForegroundService && shouldStartForegroundService(started)) {
             TtsPlaybackService.ensureStarted(context)
         }
+        return started
     }
+
+    internal fun shouldStartForegroundService(
+        playbackStarted: Boolean,
+        withForegroundService: Boolean = true,
+    ): Boolean = withForegroundService && playbackStarted
 
     fun togglePlayPause() {
         val snap = controller?.playbackSnapshot() ?: return

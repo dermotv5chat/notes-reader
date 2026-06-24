@@ -17,7 +17,10 @@ import com.andriod.reader.domain.TtsVoicePreference
 import com.andriod.reader.service.TtsHelper
 import com.andriod.reader.service.TtsVoiceQuality
 import com.andriod.reader.service.TtsPlaybackManager
-import com.andriod.reader.service.synthesis.SherpaModelManager
+import com.andriod.reader.service.edge.NetworkAvailability
+import com.andriod.reader.service.synthesis.SherpaDownloadPhase
+import com.andriod.reader.service.synthesis.SherpaDownloadProgress
+import com.andriod.reader.service.synthesis.SherpaModelDownloadCoordinator
 import com.andriod.reader.ui.theme.AppThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -64,6 +67,9 @@ data class SettingsUiState(
     val sherpaModelInstalled: Boolean = false,
     val isDownloadingSherpaModel: Boolean = false,
     val sherpaDownloadHint: String? = null,
+    val sherpaDownloadProgress: Float? = null,
+    val sherpaDownloadPhase: SherpaDownloadPhase = SherpaDownloadPhase.Idle,
+    val sherpaDownloadBytesLabel: String? = null,
 )
 
 @HiltViewModel
@@ -75,8 +81,8 @@ class SettingsViewModel @Inject constructor(
     private val diagnosticLogExporter: DiagnosticLogExporter,
     private val storageAnalyzer: AppStorageAnalyzer,
     private val storageCleaner: AppStorageCleaner,
+    private val sherpaDownloadCoordinator: SherpaModelDownloadCoordinator,
 ) : ViewModel() {
-    private val sherpaModelManager = SherpaModelManager(context, diagnosticLog)
     private val _uiState = MutableStateFlow(loadState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
@@ -104,7 +110,7 @@ class SettingsViewModel @Inject constructor(
             selectedVoiceId = settingsStore.getSelectedVoiceId(),
             voicePreference = preference,
             speechBackend = settingsStore.getTtsSpeechBackend(),
-            sherpaModelInstalled = sherpaModelManager.isModelInstalled(),
+            sherpaModelInstalled = sherpaDownloadCoordinator.isInstalled(),
         )
     }
 
@@ -271,23 +277,47 @@ class SettingsViewModel @Inject constructor(
                 selectedVoiceId = activeVoiceId,
                 speechBackend = backend,
                 sherpaModelInstalled = TtsPlaybackManager.sherpaModelInstalled() ||
-                    sherpaModelManager.isModelInstalled(),
+                    sherpaDownloadCoordinator.isInstalled(),
             )
         }
     }
 
     fun downloadSherpaModel() {
+        if (_uiState.value.isDownloadingSherpaModel) return
+        if (!NetworkAvailability.isConnected(context)) {
+            _uiState.update { it.copy(testMessage = "无网络，无法下载") }
+            return
+        }
+        diagnosticLog.i("Settings", "sherpa model download started")
+        _uiState.update {
+            it.copy(
+                isDownloadingSherpaModel = true,
+                sherpaDownloadPhase = SherpaDownloadPhase.Downloading,
+                sherpaDownloadProgress = null,
+                sherpaDownloadBytesLabel = null,
+                sherpaDownloadHint = "正在下载离线语音包…",
+                testMessage = "开始下载离线语音包（约 50 MB）…",
+            )
+        }
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(isDownloadingSherpaModel = true, sherpaDownloadHint = "正在下载离线语音包…")
+            val result = sherpaDownloadCoordinator.download { progress ->
+                updateSherpaDownloadProgressUi(progress)
             }
-            val result = withContext(Dispatchers.IO) {
-                sherpaModelManager.downloadAndInstall()
-            }
+            result.fold(
+                onSuccess = {
+                    diagnosticLog.i("Settings", "sherpa model download success")
+                },
+                onFailure = { error ->
+                    diagnosticLog.e("Settings", "sherpa model download failed: ${error.message}", error)
+                },
+            )
             _uiState.update {
                 it.copy(
                     isDownloadingSherpaModel = false,
-                    sherpaModelInstalled = sherpaModelManager.isModelInstalled(),
+                    sherpaModelInstalled = sherpaDownloadCoordinator.isInstalled(),
+                    sherpaDownloadPhase = SherpaDownloadPhase.Idle,
+                    sherpaDownloadProgress = null,
+                    sherpaDownloadBytesLabel = null,
                     sherpaDownloadHint = result.fold(
                         onSuccess = { "离线语音包已就绪" },
                         onFailure = { error -> error.message ?: "下载失败" },
@@ -298,6 +328,18 @@ class SettingsViewModel @Inject constructor(
                     ),
                 )
             }
+        }
+    }
+
+    private fun updateSherpaDownloadProgressUi(progress: SherpaDownloadProgress) {
+        val snapshot = sherpaDownloadCoordinator.uiSnapshot(progress)
+        _uiState.update {
+            it.copy(
+                sherpaDownloadPhase = snapshot.phase,
+                sherpaDownloadProgress = snapshot.progress,
+                sherpaDownloadBytesLabel = snapshot.bytesLabel,
+                sherpaDownloadHint = snapshot.hint,
+            )
         }
     }
 
@@ -414,5 +456,34 @@ class SettingsViewModel @Inject constructor(
                 it.copy(isClearingLog = false, testMessage = "已清除诊断日志")
             }
         }
+    }
+
+    fun ttsSummary(state: SettingsUiState = _uiState.value): String {
+        val backendLabel = when (state.speechBackend) {
+            TtsSpeechBackend.SYSTEM -> "系统 TTS"
+            TtsSpeechBackend.ONLINE_EDGE -> "Edge 在线"
+            TtsSpeechBackend.OFFLINE_SHERPA -> "Sherpa 离线"
+        }
+        return "$backendLabel · ${"%.1f".format(state.speechRate)}x"
+    }
+
+    fun syncSummary(state: SettingsUiState = _uiState.value): String {
+        if (state.token.isBlank()) {
+            return "未配置 Token"
+        }
+        return "${state.owner}/${state.repo}"
+    }
+
+    fun maintenanceSummary(state: SettingsUiState = _uiState.value): String {
+        val sizeLabel = formatStorageSizeForSummary(state.storageTotalBytes)
+        return "占用约 $sizeLabel · 日志 ${state.logLineCount} 行"
+    }
+
+    private fun formatStorageSizeForSummary(bytes: Long): String {
+        if (bytes < 1024) return "$bytes B"
+        val kb = (bytes + 1023) / 1024
+        if (kb < 1024) return "$kb KB"
+        val mb = bytes / (1024.0 * 1024.0)
+        return "${"%.2f".format(mb)} MB"
     }
 }

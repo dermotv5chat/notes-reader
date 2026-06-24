@@ -111,6 +111,7 @@ class TtsController(
     private var presynthPipeline: TtsPreSynthPipeline? = null
     private var presynthPlayer: PresynthPlaybackBackend? = null
     private var presynthActive = false
+    private var presynthSegmentTotal = 0
     private var lastPlainTextForPresynth: String? = null
 
     private fun ensureOnlineBackend(): OnlineEdgeSpeechBackend {
@@ -172,6 +173,14 @@ class TtsController(
     fun sherpaModelInstalled(): Boolean {
         ensurePresynthDeps()
         return sherpaBackend?.isModelInstalled() == true
+    }
+
+    fun presynthUnavailableMessage(): String? {
+        if (!wantsPresynthBackend()) return null
+        if (canPreparePresynth()) return null
+        return com.andriod.reader.service.synthesis.TtsPreSynthPipeline.unavailableMessageFor(
+            settingsStore.getTtsSpeechBackend(),
+        )
     }
 
     fun preparePresynth(
@@ -287,7 +296,11 @@ class TtsController(
         fileName = currentFileName,
         title = currentTitle,
         segmentIndex = currentIndex,
-        segmentTotal = segments.size,
+        segmentTotal = TtsPlaybackSnapshotLogic.segmentTotal(
+            presynthActive = presynthActive,
+            presynthSegmentTotal = presynthSegmentTotal,
+            segmentsSize = segments.size,
+        ),
         isPlaying = isPlaying.get() && !isPaused.get(),
         isPaused = isPlaying.get() && isPaused.get(),
     )
@@ -502,17 +515,17 @@ class TtsController(
         shutdownEngineOnly()
     }
 
-    fun start(fileName: String, title: String, text: String) {
+    fun start(fileName: String, title: String, text: String): Boolean {
         if (!isReady()) {
             diagnosticLog.w("TtsController", "start blocked: engine not ready")
             onSpeakError("语音引擎尚未就绪")
-            return
+            return false
         }
         val plain = MarkdownPlainText.stripForSpeech(text)
         if (plain.isBlank()) {
             diagnosticLog.w("TtsController", "start blocked: empty text file=$fileName")
             onSpeakError("没有可朗读的正文")
-            return
+            return false
         }
         currentFileName = fileName
         currentTitle = title
@@ -522,13 +535,15 @@ class TtsController(
         )
         if (wantsPresynthBackend()) {
             startPresynthPlayback(fileName, title, plain)
-            return
+            return playbackSnapshot().fileName == fileName
         }
         startSystemSegmentPlayback(fileName, title, plain)
+        return playbackSnapshot().fileName == fileName
     }
 
     private fun startSystemSegmentPlayback(fileName: String, title: String, plain: String) {
         presynthActive = false
+        presynthSegmentTotal = 0
         segments.clear()
         segments.addAll(splitSegments(plain))
         if (segments.isEmpty()) {
@@ -560,6 +575,17 @@ class TtsController(
             playPreparedPresynth(plain)
             return
         }
+        if (!canPreparePresynth()) {
+            val message = presynthUnavailableMessage()
+                ?: com.andriod.reader.service.synthesis.TtsPreSynthPipeline.unavailableMessageFor(
+                    settingsStore.getTtsSpeechBackend(),
+                )
+            onSpeakError(message)
+            currentFileName = null
+            currentTitle = null
+            notifySessionChanged()
+            return
+        }
         val currentState = presynthPipeline!!.progress.value.state
         if (currentState == com.andriod.reader.domain.TtsPresynthUiState.Preparing) {
             return
@@ -569,6 +595,10 @@ class TtsController(
             forceRegenerate = false,
             autoPlayWhenReady = true,
             onAutoPlay = { playPreparedPresynth(plain) },
+            onPrepareFailed = { message ->
+                onSpeakError(message)
+                stop()
+            },
         )
         isPlaying.set(false)
         isPaused.set(false)
@@ -590,6 +620,7 @@ class TtsController(
         presynthActive = true
         segments.clear()
         currentIndex = 0
+        presynthSegmentTotal = result.audioFiles.size.coerceAtLeast(1)
         isPlaying.set(true)
         isPaused.set(false)
         pausedByAudioFocus = false
@@ -603,6 +634,7 @@ class TtsController(
             result = result,
             onChunkChanged = { index, chunkTotal ->
                 currentIndex = index
+                presynthSegmentTotal = chunkTotal.coerceAtLeast(1)
                 onSegmentChanged(index, chunkTotal)
                 notifySessionChanged()
             },
@@ -623,16 +655,21 @@ class TtsController(
     }
 
     private fun handlePresynthFinished() {
-        if (!isPlaying.get() || isPaused.get()) return
+        if (!isPlaying.get() || isPaused.get()) {
+            diagnosticLog.d("TtsController", "handlePresynthFinished skipped playing=${isPlaying.get()} paused=${isPaused.get()}")
+            return
+        }
         if (TtsPlaybackEndAction.shouldContinueAfterLastSegment(
                 loopEnabled,
                 sleepTimerStateProvider(),
             )
         ) {
+            diagnosticLog.i("TtsController", "handlePresynthFinished: loop/repeat")
             lastPlainTextForPresynth?.let { playPreparedPresynth(it) }
         } else if (tryAdvancePlaylist()) {
-            // started next note
+            diagnosticLog.i("TtsController", "handlePresynthFinished: playlist advance")
         } else {
+            diagnosticLog.i("TtsController", "handlePresynthFinished: stop")
             stop()
         }
     }
@@ -696,6 +733,7 @@ class TtsController(
         onlineBackend?.stop()
         presynthPlayer?.stop()
         presynthActive = false
+        presynthSegmentTotal = 0
         tts?.stop()
         abandonAudioFocus()
         wakeLock.release()
@@ -1004,6 +1042,39 @@ object TtsNotificationHelper {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(session.hasActiveSession)
             .build()
+    }
+
+    fun buildPlaceholderNotification(
+        context: Context,
+        sessionToken: MediaSessionCompat.Token?,
+    ): Notification {
+        val albumArt = albumArtBitmap(context)
+        val openReaderIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val contentIntent = PendingIntent.getActivity(
+            context,
+            0,
+            openReaderIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setContentTitle("语音朗读")
+            .setContentText("正在启动朗读…")
+            .setSubText("笔记朗读")
+            .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(albumArt)
+            .setContentIntent(contentIntent)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+        sessionToken?.let { token ->
+            builder.setStyle(
+                MediaStyle()
+                    .setMediaSession(token)
+                    .setShowActionsInCompactView(0),
+            )
+        }
+        return builder.build()
     }
 
     private fun subtitleFor(session: TtsPlaybackSession): String {

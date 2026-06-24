@@ -112,6 +112,7 @@ class TtsPreSynthPipeline(
         forceRegenerate: Boolean = false,
         autoPlayWhenReady: Boolean = false,
         onAutoPlay: (() -> Unit)? = null,
+        onPrepareFailed: ((String) -> Unit)? = null,
     ) {
         if (!usesPresynthBackend()) return
         autoPlayAfterReady = autoPlayWhenReady
@@ -160,12 +161,17 @@ class TtsPreSynthPipeline(
             } catch (e: Exception) {
                 diagnosticLog.e("TtsPreSynth", "failed", e)
                 currentResult = null
+                val hint = "生成失败：${e.message ?: "未知错误"}"
                 _progress.value = TtsPreSynthProgress(
                     state = TtsPresynthUiState.Failed,
-                    hint = "生成失败：${e.message ?: "未知错误"}",
+                    hint = hint,
                     charCount = plainText.length,
                     contentHash = contentHash(plainText),
                 )
+                if (autoPlayAfterReady) {
+                    val message = e.message?.takeIf { it.isNotBlank() } ?: hint
+                    onPrepareFailed?.invoke(message)
+                }
             }
         }
     }
@@ -283,13 +289,15 @@ class TtsPreSynthPipeline(
         TtsSpeechBackend.SYSTEM -> ""
     }
 
-    private fun unavailableMessage(): String = when (settingsStore.getTtsSpeechBackend()) {
-        TtsSpeechBackend.ONLINE_EDGE -> "当前无网络，无法生成在线语音"
-        TtsSpeechBackend.OFFLINE_SHERPA -> "请先在设置中下载离线语音包"
-        TtsSpeechBackend.SYSTEM -> "系统朗读不可用"
-    }
+    private fun unavailableMessage(): String = unavailableMessageFor(settingsStore.getTtsSpeechBackend())
 
     companion object {
         fun plainTextFromMarkdown(markdown: String): String = MarkdownPlainText.stripForSpeech(markdown)
+
+        fun unavailableMessageFor(backend: TtsSpeechBackend): String = when (backend) {
+            TtsSpeechBackend.ONLINE_EDGE -> "当前无网络，无法生成在线语音"
+            TtsSpeechBackend.OFFLINE_SHERPA -> "请先在设置中下载离线语音包"
+            TtsSpeechBackend.SYSTEM -> "系统朗读不可用"
+        }
     }
 }

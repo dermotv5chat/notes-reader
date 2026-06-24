@@ -8,13 +8,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
+import com.andriod.reader.service.synthesis.SherpaDownloadPhase
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +43,9 @@ fun TtsVoiceSettingsSection(
     sherpaModelInstalled: Boolean = false,
     isDownloadingSherpaModel: Boolean = false,
     sherpaDownloadHint: String? = null,
+    sherpaDownloadProgress: Float? = null,
+    sherpaDownloadPhase: SherpaDownloadPhase = SherpaDownloadPhase.Idle,
+    sherpaDownloadBytesLabel: String? = null,
     onDownloadSherpaModel: () -> Unit = {},
 ) {
     if (showBackendSelector) {
@@ -92,13 +96,50 @@ fun TtsVoiceSettingsSection(
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(bottom = 8.dp),
         )
-        sherpaDownloadHint?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
+        if (isDownloadingSherpaModel) {
+            when {
+                sherpaDownloadProgress != null -> {
+                    LinearProgressIndicator(
+                        progress = { sherpaDownloadProgress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                    )
+                }
+                sherpaDownloadPhase == SherpaDownloadPhase.Extracting ||
+                    sherpaDownloadPhase == SherpaDownloadPhase.Downloading -> {
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                    )
+                }
+            }
+            sherpaDownloadHint?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
+            }
+            sherpaDownloadBytesLabel?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+        } else {
+            sherpaDownloadHint?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
         }
         Button(
             onClick = onDownloadSherpaModel,
@@ -107,10 +148,13 @@ fun TtsVoiceSettingsSection(
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
         ) {
-            if (isDownloadingSherpaModel) {
-                CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
-            }
-            Text(if (sherpaModelInstalled) "已下载" else "下载离线语音包")
+            Text(
+                when {
+                    sherpaModelInstalled -> "已下载"
+                    isDownloadingSherpaModel -> "下载中…"
+                    else -> "下载离线语音包"
+                },
+            )
         }
     }
 

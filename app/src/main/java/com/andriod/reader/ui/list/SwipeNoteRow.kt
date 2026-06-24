@@ -14,8 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-private val NoteSwipeActionWidth = 256.dp
-private val FolderSwipeActionWidth = 64.dp
+private val SwipeActionButtonWidth = 52.dp
 
 @Composable
 fun SwipeNoteRow(
@@ -29,10 +28,12 @@ fun SwipeNoteRow(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
+    val actionCount = if (onAddToQueue != null) 4 else 3
+    val actionWidth = SwipeActionButtonWidth * actionCount
     SwipeRevealRow(
         isExpanded = isExpanded,
         onExpandedChange = onExpandedChange,
-        actionWidth = NoteSwipeActionWidth,
+        actionWidth = actionWidth,
         onOpen = onOpen,
         modifier = modifier,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
@@ -92,7 +93,7 @@ fun SwipeFolderRow(
     SwipeRevealRow(
         isExpanded = isExpanded,
         onExpandedChange = onExpandedChange,
-        actionWidth = FolderSwipeActionWidth,
+        actionWidth = SwipeActionButtonWidth,
         onOpen = onOpen,
         modifier = modifier,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 14.dp),

@@ -33,6 +33,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -413,48 +415,73 @@ fun ReaderTtsSettingsSheet(
     onVoiceSelected: (String) -> Unit,
     onSpeechRateChange: (Float) -> Unit,
     onSpeechPitchChange: (Float) -> Unit,
+    onDownloadSherpaModel: () -> Unit,
+    onClearSherpaDownloadSnackbar: () -> Unit,
 ) {
     if (!uiState.ttsSettingsVisible) return
 
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(uiState.sherpaDownloadSnackbar) {
+        uiState.sherpaDownloadSnackbar?.let { message ->
+            snackbar.showSnackbar(message)
+            onClearSherpaDownloadSnackbar()
+        }
+    }
+
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
-        ) {
-            Text(
-                "朗读设置",
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(bottom = 16.dp),
+        Box(modifier = Modifier.fillMaxWidth()) {
+            SnackbarHost(
+                hostState = snackbar,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 16.dp),
             )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(top = 8.dp, bottom = 32.dp),
+            ) {
+                Text(
+                    "朗读设置",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                )
 
-            TtsVoiceSettingsSection(
-                voiceOptions = uiState.voiceOptions,
-                selectedVoiceId = uiState.selectedVoiceId,
-                voicePreference = uiState.voicePreference,
-                speechBackend = uiState.speechBackend,
-                qualityGuide = uiState.ttsQualityHint,
-                onVoicePreferenceChange = onVoicePreferenceChange,
-                onVoicePickerExpandedChange = onVoicePickerExpandedChange,
-                onVoiceSelected = onVoiceSelected,
-                onSpeechBackendChange = onSpeechBackendChange,
-                voicePickerExpanded = uiState.voicePickerExpanded,
-            )
+                TtsVoiceSettingsSection(
+                    voiceOptions = uiState.voiceOptions,
+                    selectedVoiceId = uiState.selectedVoiceId,
+                    voicePreference = uiState.voicePreference,
+                    speechBackend = uiState.speechBackend,
+                    qualityGuide = uiState.ttsQualityHint,
+                    onVoicePreferenceChange = onVoicePreferenceChange,
+                    onVoicePickerExpandedChange = onVoicePickerExpandedChange,
+                    onVoiceSelected = onVoiceSelected,
+                    onSpeechBackendChange = onSpeechBackendChange,
+                    voicePickerExpanded = uiState.voicePickerExpanded,
+                    sherpaModelInstalled = uiState.sherpaModelInstalled,
+                    isDownloadingSherpaModel = uiState.isDownloadingSherpaModel,
+                    sherpaDownloadHint = uiState.sherpaDownloadHint,
+                    sherpaDownloadProgress = uiState.sherpaDownloadProgress,
+                    sherpaDownloadPhase = uiState.sherpaDownloadPhase,
+                    sherpaDownloadBytesLabel = uiState.sherpaDownloadBytesLabel,
+                    onDownloadSherpaModel = onDownloadSherpaModel,
+                )
 
-            Text("语速 ${"%.1f".format(uiState.speechRate)}x")
-            Slider(
-                value = uiState.speechRate,
-                onValueChange = onSpeechRateChange,
-                valueRange = 0.5f..2.0f,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-            Text("音调 ${"%.1f".format(uiState.speechPitch)}")
-            Slider(
-                value = uiState.speechPitch,
-                onValueChange = onSpeechPitchChange,
-                valueRange = 0.8f..1.2f,
-            )
+                Text("语速 ${"%.1f".format(uiState.speechRate)}x")
+                Slider(
+                    value = uiState.speechRate,
+                    onValueChange = onSpeechRateChange,
+                    valueRange = 0.5f..2.0f,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                Text("音调 ${"%.1f".format(uiState.speechPitch)}")
+                Slider(
+                    value = uiState.speechPitch,
+                    onValueChange = onSpeechPitchChange,
+                    valueRange = 0.8f..1.2f,
+                )
+            }
         }
     }
 }

@@ -41,12 +41,19 @@ import com.andriod.reader.ui.player.TtsPlaylistViewModel
 import com.andriod.reader.ui.player.TtsQueueSheet
 import com.andriod.reader.ui.reader.PracticeCalendarScreen
 import com.andriod.reader.ui.reader.ReaderScreen
-import com.andriod.reader.ui.settings.SettingsScreen
+import com.andriod.reader.ui.settings.SettingsHomeScreen
+import com.andriod.reader.ui.settings.SettingsMaintenanceScreen
+import com.andriod.reader.ui.settings.SettingsSyncScreen
+import com.andriod.reader.ui.settings.SettingsTtsScreen
+import com.andriod.reader.ui.settings.SettingsViewModel
 
 object Routes {
     const val NOTES = "notes"
     const val PLAYLIST = "playlist"
     const val SETTINGS = "settings"
+    const val SETTINGS_TTS = "settings/tts"
+    const val SETTINGS_SYNC = "settings/sync"
+    const val SETTINGS_MAINTENANCE = "settings/maintenance"
     const val PRINCIPLES_GUIDE = "principles_guide"
     const val EDITOR = "editor?fileName={fileName}"
     const val EDITOR_IN_FOLDER = "editor?parentFolder={parentFolder}"
@@ -90,16 +97,20 @@ fun ReaderApp(
     val playlistViewModel: TtsPlaylistViewModel = hiltViewModel()
     val playlistSnapshot by playlistViewModel.snapshot.collectAsState()
     var showQueueSheet by remember { mutableStateOf(false) }
+    val isSettingsSubRoute = currentRoute == Routes.SETTINGS_TTS ||
+        currentRoute == Routes.SETTINGS_SYNC ||
+        currentRoute == Routes.SETTINGS_MAINTENANCE
     val showBottomBar = currentRoute == Routes.NOTES ||
         currentRoute == Routes.PLAYLIST ||
         currentRoute == Routes.SETTINGS
     val isReader = currentRoute?.startsWith("reader") == true
     val isEditor = currentRoute?.startsWith("editor") == true
     val isPrinciplesGuide = currentRoute == Routes.PRINCIPLES_GUIDE
+    val isSettingsArea = currentRoute == Routes.SETTINGS || isSettingsSubRoute
     val showMiniBar = session.hasActiveSession && !isReader && (
         currentRoute == Routes.NOTES ||
             currentRoute == Routes.PLAYLIST ||
-            currentRoute == Routes.SETTINGS ||
+            isSettingsArea ||
             isEditor
         )
 
@@ -204,7 +215,7 @@ fun ReaderApp(
             }
         },
     ) { padding ->
-        val navPadding = if ((isEditor || isPrinciplesGuide) && !showMiniBar) {
+        val navPadding = if ((isEditor || isPrinciplesGuide || isSettingsSubRoute) && !showMiniBar) {
             PaddingValues()
         } else {
             padding
@@ -238,10 +249,43 @@ fun ReaderApp(
                 )
             }
             composable(Routes.SETTINGS) {
-                SettingsScreen(
+                SettingsHomeScreen(
+                    onOpenTts = { navController.navigate(Routes.SETTINGS_TTS) },
+                    onOpenSync = { navController.navigate(Routes.SETTINGS_SYNC) },
+                    onOpenMaintenance = { navController.navigate(Routes.SETTINGS_MAINTENANCE) },
                     onOpenPrinciplesGuide = {
                         navController.navigate(Routes.PRINCIPLES_GUIDE)
                     },
+                )
+            }
+            composable(Routes.SETTINGS_TTS) { backStackEntry ->
+                val parentEntry = remember(backStackEntry) {
+                    navController.getBackStackEntry(Routes.SETTINGS)
+                }
+                val viewModel: SettingsViewModel = hiltViewModel(parentEntry)
+                SettingsTtsScreen(
+                    onBack = { navController.popBackStack() },
+                    viewModel = viewModel,
+                )
+            }
+            composable(Routes.SETTINGS_SYNC) { backStackEntry ->
+                val parentEntry = remember(backStackEntry) {
+                    navController.getBackStackEntry(Routes.SETTINGS)
+                }
+                val viewModel: SettingsViewModel = hiltViewModel(parentEntry)
+                SettingsSyncScreen(
+                    onBack = { navController.popBackStack() },
+                    viewModel = viewModel,
+                )
+            }
+            composable(Routes.SETTINGS_MAINTENANCE) { backStackEntry ->
+                val parentEntry = remember(backStackEntry) {
+                    navController.getBackStackEntry(Routes.SETTINGS)
+                }
+                val viewModel: SettingsViewModel = hiltViewModel(parentEntry)
+                SettingsMaintenanceScreen(
+                    onBack = { navController.popBackStack() },
+                    viewModel = viewModel,
                 )
             }
             composable(Routes.PRINCIPLES_GUIDE) {

@@ -100,6 +100,8 @@ fun ReaderScreen(
         onVoiceSelected = viewModel::onVoiceSelected,
         onSpeechRateChange = viewModel::onSpeechRateChange,
         onSpeechPitchChange = viewModel::onSpeechPitchChange,
+        onDownloadSherpaModel = viewModel::downloadSherpaModel,
+        onClearSherpaDownloadSnackbar = viewModel::clearSherpaDownloadSnackbar,
     )
 
     ReaderSleepTimerSheet(

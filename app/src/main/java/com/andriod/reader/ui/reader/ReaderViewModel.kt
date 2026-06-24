@@ -28,6 +28,10 @@ import com.andriod.reader.service.TtsVoiceQuality
 import com.andriod.reader.service.TtsPlaybackManager
 import com.andriod.reader.service.TtsPlaybackSession
 import com.andriod.reader.service.TtsPlaylistManager
+import com.andriod.reader.service.edge.NetworkAvailability
+import com.andriod.reader.service.synthesis.SherpaDownloadPhase
+import com.andriod.reader.service.synthesis.SherpaDownloadProgress
+import com.andriod.reader.service.synthesis.SherpaModelDownloadCoordinator
 import com.andriod.reader.ui.NavArgs
 import com.andriod.reader.ui.Routes
 import com.andriod.reader.util.NotificationPermission
@@ -81,6 +85,13 @@ data class ReaderUiState(
     val presynthCharCount: Int = 0,
     val presynthButtonEnabled: Boolean = true,
     val presynthSnackbar: String? = null,
+    val sherpaModelInstalled: Boolean = false,
+    val isDownloadingSherpaModel: Boolean = false,
+    val sherpaDownloadHint: String? = null,
+    val sherpaDownloadProgress: Float? = null,
+    val sherpaDownloadPhase: SherpaDownloadPhase = SherpaDownloadPhase.Idle,
+    val sherpaDownloadBytesLabel: String? = null,
+    val sherpaDownloadSnackbar: String? = null,
     val blocks: List<NoteBlock> = emptyList(),
     val todayPractice: Map<String, PracticeDayEntry> = emptyMap(),
     val practiceMeta: Map<String, BlockPracticeDisplayMeta> = emptyMap(),
@@ -96,6 +107,7 @@ class ReaderViewModel @Inject constructor(
     private val settingsStore: SettingsStore,
     private val playlistManager: TtsPlaylistManager,
     private val diagnosticLog: AppDiagnosticLog,
+    private val sherpaDownloadCoordinator: SherpaModelDownloadCoordinator,
 ) : ViewModel() {
     private val fileName: String = NavArgs.decodeFileName(savedStateHandle.get<String>("fileName"))
 
@@ -147,8 +159,9 @@ class ReaderViewModel @Inject constructor(
                 progress.state != TtsPresynthUiState.Preparing ->
                 "当前无网络，无法生成；可改用离线高质量或系统朗读"
             backend == TtsSpeechBackend.OFFLINE_SHERPA && !TtsPlaybackManager.sherpaModelInstalled() &&
+                !sherpaDownloadCoordinator.isInstalled() &&
                 progress.state != TtsPresynthUiState.Ready ->
-                "请先在设置中下载离线语音包"
+                "请先下载离线语音包（朗读设置）"
             else -> progress.hint
         }
         val snackbar = if (
@@ -320,8 +333,76 @@ class ReaderViewModel @Inject constructor(
                 selectedVoiceId = activeId,
                 speechBackend = backend,
                 ttsQualityHint = hint,
+                sherpaModelInstalled = TtsPlaybackManager.sherpaModelInstalled() ||
+                    sherpaDownloadCoordinator.isInstalled(),
             )
         }
+    }
+
+    fun downloadSherpaModel() {
+        if (_uiState.value.isDownloadingSherpaModel) return
+        if (!NetworkAvailability.isConnected(context)) {
+            _uiState.update { it.copy(sherpaDownloadSnackbar = "无网络，无法下载") }
+            return
+        }
+        diagnosticLog.i("Reader", "sherpa model download started")
+        _uiState.update {
+            it.copy(
+                isDownloadingSherpaModel = true,
+                sherpaDownloadPhase = SherpaDownloadPhase.Downloading,
+                sherpaDownloadProgress = null,
+                sherpaDownloadBytesLabel = null,
+                sherpaDownloadHint = "正在下载离线语音包…",
+                sherpaDownloadSnackbar = "开始下载离线语音包（约 50 MB）…",
+            )
+        }
+        viewModelScope.launch {
+            val result = sherpaDownloadCoordinator.download { progress ->
+                updateSherpaDownloadProgressUi(progress)
+            }
+            result.fold(
+                onSuccess = {
+                    diagnosticLog.i("Reader", "sherpa model download success")
+                },
+                onFailure = { error ->
+                    diagnosticLog.e("Reader", "sherpa model download failed: ${error.message}", error)
+                },
+            )
+            _uiState.value.note?.content?.let { TtsPlaybackManager.refreshPresynthForNote(it) }
+            _uiState.update {
+                it.copy(
+                    isDownloadingSherpaModel = false,
+                    sherpaModelInstalled = sherpaDownloadCoordinator.isInstalled(),
+                    sherpaDownloadPhase = SherpaDownloadPhase.Idle,
+                    sherpaDownloadProgress = null,
+                    sherpaDownloadBytesLabel = null,
+                    sherpaDownloadHint = result.fold(
+                        onSuccess = { "离线语音包已就绪" },
+                        onFailure = { error -> error.message ?: "下载失败" },
+                    ),
+                    sherpaDownloadSnackbar = result.fold(
+                        onSuccess = { "离线语音包已下载" },
+                        onFailure = { error -> "下载失败：${error.message ?: "未知错误"}" },
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun updateSherpaDownloadProgressUi(progress: SherpaDownloadProgress) {
+        val snapshot = sherpaDownloadCoordinator.uiSnapshot(progress)
+        _uiState.update {
+            it.copy(
+                sherpaDownloadPhase = snapshot.phase,
+                sherpaDownloadProgress = snapshot.progress,
+                sherpaDownloadBytesLabel = snapshot.bytesLabel,
+                sherpaDownloadHint = snapshot.hint,
+            )
+        }
+    }
+
+    fun clearSherpaDownloadSnackbar() {
+        _uiState.update { it.copy(sherpaDownloadSnackbar = null) }
     }
 
     fun onSpeechRateChange(rate: Float) {
@@ -766,6 +847,7 @@ class ReaderViewModel @Inject constructor(
             } ?: false,
             canSelectRepeatAll = playlistManager.state.value.items.isNotEmpty(),
             lastSleepTimerPresetSubtitle = settingsStore.getLastSleepTimerPreset().displaySubtitle(),
+            sherpaModelInstalled = sherpaDownloadCoordinator.isInstalled(),
         )
     }
 }
