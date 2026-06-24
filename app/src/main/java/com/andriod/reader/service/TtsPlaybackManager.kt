@@ -7,6 +7,7 @@ import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.service.edge.NetworkAvailability
 import com.andriod.reader.service.synthesis.PresynthJobState
+import com.andriod.reader.service.synthesis.PresynthPrepareResult
 import com.andriod.reader.service.synthesis.TtsPresynthJobManager
 import com.andriod.reader.service.synthesis.TtsPreSynthPipeline
 import com.andriod.reader.service.synthesis.TtsPreSynthProgress
@@ -131,6 +132,8 @@ object TtsPlaybackManager {
             diagnosticLog = diagnosticLog(context),
             presynthPipeline = ep.ttsPreSynthPipeline(),
             presynthJobManager = ep.ttsPresynthJobManager(),
+            sherpaModelManager = ep.sherpaModelManager(),
+            sherpaFullTextSynthesizer = ep.sherpaFullTextSynthesizer(),
             onSegmentChanged = attachedSegmentCallback,
             onPlaybackStateChanged = attachedPlaybackCallback,
             onSpeakError = ::dispatchSpeakError,
@@ -220,7 +223,7 @@ object TtsPlaybackManager {
         title: String,
         content: String,
         forceRegenerate: Boolean = false,
-    ): Boolean {
+    ): PresynthPrepareResult {
         val ctrl = getOrCreate(context)
         return ctrl.preparePresynth(fileName, title, content, forceRegenerate)
     }
@@ -231,6 +234,21 @@ object TtsPlaybackManager {
 
     fun refreshSession() {
         syncSession()
+    }
+
+    fun onSherpaSettingsChanged() {
+        controller?.onSherpaSettingsChanged()
+    }
+
+    fun sherpaModelInstalled(context: Context): Boolean {
+        val packId = settingsStore(context).getSherpaModelPackId()
+        return controller?.sherpaModelInstalled() == true ||
+            EntryPointAccessors.fromApplication(
+                context.applicationContext,
+                TtsServiceEntryPoint::class.java,
+            ).let { ep ->
+                ep.sherpaModelManager().isPackInstalled(packId)
+            }
     }
 
     fun sherpaModelInstalled(): Boolean = controller?.sherpaModelInstalled() == true

@@ -20,6 +20,7 @@ import com.andriod.reader.service.TtsPlaybackManager
 import com.andriod.reader.service.edge.NetworkAvailability
 import com.andriod.reader.service.synthesis.SherpaDownloadPhase
 import com.andriod.reader.service.synthesis.SherpaDownloadProgress
+import com.andriod.reader.service.synthesis.SherpaModelCatalog
 import com.andriod.reader.service.synthesis.SherpaModelDownloadCoordinator
 import com.andriod.reader.ui.theme.AppThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -65,6 +66,12 @@ data class SettingsUiState(
     val isAnalyzingStorage: Boolean = false,
     val isCleaningStorage: Boolean = false,
     val sherpaModelInstalled: Boolean = false,
+    val sherpaModelPacks: List<com.andriod.reader.service.synthesis.SherpaModelPack> = emptyList(),
+    val selectedSherpaPackId: String = SherpaModelCatalog.MELO_ID,
+    val installedSherpaPackIds: Set<String> = emptySet(),
+    val selectedSherpaSpeakerId: Int = 0,
+    val sherpaPackPickerExpanded: Boolean = false,
+    val downloadingSherpaPackId: String? = null,
     val isDownloadingSherpaModel: Boolean = false,
     val sherpaDownloadHint: String? = null,
     val sherpaDownloadProgress: Float? = null,
@@ -110,7 +117,11 @@ class SettingsViewModel @Inject constructor(
             selectedVoiceId = settingsStore.getSelectedVoiceId(),
             voicePreference = preference,
             speechBackend = settingsStore.getTtsSpeechBackend(),
-            sherpaModelInstalled = sherpaDownloadCoordinator.isInstalled(),
+            sherpaModelPacks = sherpaDownloadCoordinator.catalog(),
+            selectedSherpaPackId = settingsStore.getSherpaModelPackId(),
+            installedSherpaPackIds = sherpaDownloadCoordinator.installedPackIds(),
+            selectedSherpaSpeakerId = settingsStore.getSherpaSpeakerId(),
+            sherpaModelInstalled = sherpaDownloadCoordinator.isCurrentPackInstalled(),
         )
     }
 
@@ -250,7 +261,7 @@ class SettingsViewModel @Inject constructor(
         val backend = controller.speechBackend()
         val activeVoiceId = when (backend) {
             TtsSpeechBackend.ONLINE_EDGE -> settingsStore.getEdgeTtsVoiceId()
-            TtsSpeechBackend.OFFLINE_SHERPA -> "sherpa-vits-zh"
+            TtsSpeechBackend.OFFLINE_SHERPA -> "sherpa:${settingsStore.getSherpaSpeakerId()}"
             TtsSpeechBackend.SYSTEM -> diag.voiceName?.takeIf { name ->
                 options.any { it.id == name }
             } ?: _uiState.value.selectedVoiceId
@@ -276,36 +287,104 @@ class SettingsViewModel @Inject constructor(
                 voiceOptions = options,
                 selectedVoiceId = activeVoiceId,
                 speechBackend = backend,
+                sherpaModelPacks = sherpaDownloadCoordinator.catalog(),
+                selectedSherpaPackId = settingsStore.getSherpaModelPackId(),
+                installedSherpaPackIds = sherpaDownloadCoordinator.installedPackIds(),
+                selectedSherpaSpeakerId = settingsStore.getSherpaSpeakerId(),
                 sherpaModelInstalled = TtsPlaybackManager.sherpaModelInstalled() ||
-                    sherpaDownloadCoordinator.isInstalled(),
+                    sherpaDownloadCoordinator.isCurrentPackInstalled(),
             )
         }
     }
 
+    fun onSherpaPackPickerExpandedChange(expanded: Boolean) {
+        _uiState.update { it.copy(sherpaPackPickerExpanded = expanded) }
+    }
+
+    fun onSherpaPackSelected(packId: String) {
+        val pack = SherpaModelCatalog.packById(packId) ?: return
+        if (sherpaDownloadCoordinator.isPackInstalled(packId)) {
+            selectSherpaPack(packId)
+        } else {
+            downloadSherpaPack(packId)
+        }
+    }
+
+    fun onSherpaSpeakerSelected(speakerId: Int) {
+        val pack = SherpaModelCatalog.packById(_uiState.value.selectedSherpaPackId) ?: return
+        if (speakerId !in 0 until pack.speakerCount) return
+        settingsStore.saveSherpaSpeakerId(speakerId)
+        applySherpaSettingsChange()
+        _uiState.update { it.copy(selectedSherpaSpeakerId = speakerId, saved = false) }
+    }
+
+    private fun selectSherpaPack(packId: String) {
+        val pack = SherpaModelCatalog.packById(packId) ?: return
+        settingsStore.saveSherpaModelPackId(packId)
+        val sid = settingsStore.getSherpaSpeakerId()
+        if (sid >= pack.speakerCount) {
+            settingsStore.saveSherpaSpeakerId(pack.defaultSid)
+        }
+        applySherpaSettingsChange()
+        _uiState.update {
+            it.copy(
+                selectedSherpaPackId = packId,
+                selectedSherpaSpeakerId = settingsStore.getSherpaSpeakerId(),
+                installedSherpaPackIds = sherpaDownloadCoordinator.installedPackIds(),
+                sherpaModelInstalled = sherpaDownloadCoordinator.isPackInstalled(packId),
+                saved = false,
+            )
+        }
+        viewModelScope.launch {
+            val controller = TtsPlaybackManager.getOrNull() ?: TtsPlaybackManager.awaitReady(ttsContext())
+            updateDiagnostics(controller)
+        }
+    }
+
+    private fun applySherpaSettingsChange() {
+        TtsPlaybackManager.onSherpaSettingsChanged()
+    }
+
     fun downloadSherpaModel() {
+        downloadSherpaPack(_uiState.value.selectedSherpaPackId)
+    }
+
+    private fun downloadSherpaPack(packId: String) {
         if (_uiState.value.isDownloadingSherpaModel) return
         if (!NetworkAvailability.isConnected(context)) {
             _uiState.update { it.copy(testMessage = "无网络，无法下载") }
             return
         }
-        diagnosticLog.i("Settings", "sherpa model download started")
+        val pack = SherpaModelCatalog.packById(packId) ?: return
+        diagnosticLog.i("Settings", "sherpa model download started pack=$packId")
         _uiState.update {
             it.copy(
+                selectedSherpaPackId = packId,
+                downloadingSherpaPackId = packId,
                 isDownloadingSherpaModel = true,
                 sherpaDownloadPhase = SherpaDownloadPhase.Downloading,
                 sherpaDownloadProgress = null,
                 sherpaDownloadBytesLabel = null,
-                sherpaDownloadHint = "正在下载离线语音包…",
-                testMessage = "开始下载离线语音包（约 50 MB）…",
+                sherpaDownloadHint = "正在下载 ${pack.displayName}…",
+                testMessage = "开始下载 ${pack.displayName}（约 ${pack.estimatedSizeMb} MB）…",
             )
         }
         viewModelScope.launch {
-            val result = sherpaDownloadCoordinator.download { progress ->
+            val result = sherpaDownloadCoordinator.download(packId) { progress ->
                 updateSherpaDownloadProgressUi(progress)
             }
             result.fold(
                 onSuccess = {
-                    diagnosticLog.i("Settings", "sherpa model download success")
+                    diagnosticLog.i("Settings", "sherpa model download success pack=$packId")
+                    settingsStore.saveSherpaModelPackId(packId)
+                    val installedPack = SherpaModelCatalog.packById(packId)
+                    if (installedPack != null) {
+                        val sid = settingsStore.getSherpaSpeakerId()
+                        if (sid >= installedPack.speakerCount) {
+                            settingsStore.saveSherpaSpeakerId(installedPack.defaultSid)
+                        }
+                    }
+                    applySherpaSettingsChange()
                 },
                 onFailure = { error ->
                     diagnosticLog.e("Settings", "sherpa model download failed: ${error.message}", error)
@@ -314,20 +393,24 @@ class SettingsViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     isDownloadingSherpaModel = false,
-                    sherpaModelInstalled = sherpaDownloadCoordinator.isInstalled(),
+                    downloadingSherpaPackId = null,
+                    installedSherpaPackIds = sherpaDownloadCoordinator.installedPackIds(),
+                    sherpaModelInstalled = sherpaDownloadCoordinator.isPackInstalled(packId),
+                    selectedSherpaSpeakerId = settingsStore.getSherpaSpeakerId(),
                     sherpaDownloadPhase = SherpaDownloadPhase.Idle,
                     sherpaDownloadProgress = null,
                     sherpaDownloadBytesLabel = null,
                     sherpaDownloadHint = result.fold(
-                        onSuccess = { "离线语音包已就绪" },
+                        onSuccess = { "${pack.displayName} 已就绪" },
                         onFailure = { error -> error.message ?: "下载失败" },
                     ),
                     testMessage = result.fold(
-                        onSuccess = { "离线语音包已下载" },
+                        onSuccess = { "${pack.displayName} 已下载" },
                         onFailure = { error -> "下载失败：${error.message ?: "未知错误"}" },
                     ),
                 )
             }
+            TtsPlaybackManager.getOrNull()?.let { updateDiagnostics(it) }
         }
     }
 

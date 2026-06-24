@@ -1,4 +1,4 @@
-package com.andriod.reader.service
+package com.andriod.reader.di
 
 import android.content.Context
 import com.andriod.reader.data.local.AppDiagnosticLog
@@ -19,18 +19,36 @@ import javax.inject.Singleton
 object TtsSynthesisModule {
     @Provides
     @Singleton
+    fun provideSherpaModelManager(
+        @ApplicationContext context: Context,
+        settingsStore: SettingsStore,
+        diagnosticLog: AppDiagnosticLog,
+    ): SherpaModelManager = SherpaModelManager(context, settingsStore, diagnosticLog)
+
+    @Provides
+    @Singleton
+    fun provideSherpaFullTextSynthesizer(
+        @ApplicationContext context: Context,
+        modelManager: SherpaModelManager,
+        settingsStore: SettingsStore,
+        diagnosticLog: AppDiagnosticLog,
+    ): SherpaFullTextSynthesizer =
+        SherpaFullTextSynthesizer(context, modelManager, settingsStore, diagnosticLog)
+
+    @Provides
+    @Singleton
     fun provideTtsPreSynthPipeline(
         @ApplicationContext context: Context,
         settingsStore: SettingsStore,
         diagnosticLog: AppDiagnosticLog,
+        sherpaSynthesizer: SherpaFullTextSynthesizer,
     ): TtsPreSynthPipeline {
-        val modelManager = SherpaModelManager(context, diagnosticLog)
         return TtsPreSynthPipeline(
             context = context,
             settingsStore = settingsStore,
             diagnosticLog = diagnosticLog,
             edgeSynthesizer = EdgeFullTextSynthesizer(context, settingsStore, diagnosticLog),
-            sherpaSynthesizer = SherpaFullTextSynthesizer(context, modelManager, diagnosticLog),
+            sherpaSynthesizer = sherpaSynthesizer,
         )
     }
 }

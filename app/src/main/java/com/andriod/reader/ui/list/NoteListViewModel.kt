@@ -134,25 +134,49 @@ class NoteListViewModel @Inject constructor(
         val job = presynthJobFor(note)
         val state = job?.uiState ?: TtsPresynthUiState.NotPrepared
         when (state) {
-            TtsPresynthUiState.Preparing -> TtsPlaybackManager.cancelPresynth(note.fileName)
-            TtsPresynthUiState.Ready -> TtsPlaybackManager.preparePresynth(
-                context = context,
-                fileName = note.fileName,
-                title = note.title,
-                content = note.content,
-                forceRegenerate = true,
+            TtsPresynthUiState.Preparing,
+            TtsPresynthUiState.Queued,
+            -> TtsPlaybackManager.cancelPresynth(note.fileName)
+            TtsPresynthUiState.Ready -> handlePresynthPrepareResult(
+                note,
+                TtsPlaybackManager.preparePresynth(
+                    context = context,
+                    fileName = note.fileName,
+                    title = note.title,
+                    content = note.content,
+                    forceRegenerate = true,
+                ),
             )
             TtsPresynthUiState.Stale,
             TtsPresynthUiState.Failed,
             TtsPresynthUiState.NotPrepared,
-            -> TtsPlaybackManager.preparePresynth(
-                context = context,
-                fileName = note.fileName,
-                title = note.title,
-                content = note.content,
-                forceRegenerate = state != TtsPresynthUiState.NotPrepared,
+            -> handlePresynthPrepareResult(
+                note,
+                TtsPlaybackManager.preparePresynth(
+                    context = context,
+                    fileName = note.fileName,
+                    title = note.title,
+                    content = note.content,
+                    forceRegenerate = state != TtsPresynthUiState.NotPrepared,
+                ),
             )
             TtsPresynthUiState.Hidden -> Unit
+        }
+    }
+
+    private fun handlePresynthPrepareResult(
+        note: Note,
+        result: com.andriod.reader.service.synthesis.PresynthPrepareResult,
+    ) {
+        val snackbar = when (result) {
+            is com.andriod.reader.service.synthesis.PresynthPrepareResult.Queued ->
+                "《${note.title}》已加入生成队列（第 ${result.position} 位）"
+            com.andriod.reader.service.synthesis.PresynthPrepareResult.AlreadyQueued ->
+                "《${note.title}》已在队列中"
+            else -> null
+        }
+        if (snackbar != null) {
+            _uiState.update { it.copy(presynthSnackbar = snackbar) }
         }
     }
 

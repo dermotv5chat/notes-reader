@@ -110,7 +110,9 @@ fun ReaderScreen(
         onVoiceSelected = viewModel::onVoiceSelected,
         onSpeechRateChange = viewModel::onSpeechRateChange,
         onSpeechPitchChange = viewModel::onSpeechPitchChange,
-        onDownloadSherpaModel = viewModel::downloadSherpaModel,
+        onSherpaPackPickerExpandedChange = viewModel::onSherpaPackPickerExpandedChange,
+        onSherpaPackSelected = viewModel::onSherpaPackSelected,
+        onSherpaSpeakerSelected = viewModel::onSherpaSpeakerSelected,
         onClearSherpaDownloadSnackbar = viewModel::clearSherpaDownloadSnackbar,
     )
 

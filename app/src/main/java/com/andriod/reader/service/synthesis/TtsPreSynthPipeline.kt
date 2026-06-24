@@ -312,7 +312,11 @@ class TtsPreSynthPipeline(
 
     private fun voiceIdForBackend(): String = when (settingsStore.getTtsSpeechBackend()) {
         TtsSpeechBackend.ONLINE_EDGE -> settingsStore.getEdgeTtsVoiceId()
-        TtsSpeechBackend.OFFLINE_SHERPA -> "sherpa-vits-zh"
+        TtsSpeechBackend.OFFLINE_SHERPA -> {
+            val packId = settingsStore.getSherpaModelPackId()
+            val sid = settingsStore.getSherpaSpeakerId()
+            "$packId:sid$sid"
+        }
         TtsSpeechBackend.SYSTEM -> settingsStore.getSelectedVoiceId() ?: "system"
     }
 

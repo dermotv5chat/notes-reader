@@ -2,6 +2,7 @@ package com.andriod.reader.service.synthesis
 
 import android.content.Context
 import com.andriod.reader.data.local.AppDiagnosticLog
+import com.andriod.reader.data.remote.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
@@ -15,30 +16,51 @@ import okhttp3.Request
 
 class SherpaModelManager(
     context: Context,
+    private val settingsStore: SettingsStore,
     private val diagnosticLog: AppDiagnosticLog,
 ) {
     private val appContext = context.applicationContext
     private val modelRoot = File(appContext.filesDir, "tts-models")
 
-    fun modelDirectory(): File = File(modelRoot, MODEL_DIR_NAME)
+    fun currentPack(): SherpaModelPack =
+        SherpaModelCatalog.packById(settingsStore.getSherpaModelPackId())
+            ?: SherpaModelCatalog.defaultPack()
 
-    fun isModelInstalled(): Boolean {
-        val dir = modelDirectory()
-        return File(dir, "model.onnx").exists() && File(dir, "tokens.txt").exists()
+    fun modelDirectory(pack: SherpaModelPack = currentPack()): File = File(modelRoot, pack.dirName)
+
+    fun isPackInstalled(packId: String): Boolean {
+        val pack = SherpaModelCatalog.packById(packId) ?: return false
+        return isPackInstalled(pack)
     }
 
+    fun isPackInstalled(pack: SherpaModelPack): Boolean {
+        val dir = modelDirectory(pack)
+        return File(dir, pack.modelFileName).exists() && File(dir, pack.tokensFileName).exists()
+    }
+
+    fun isCurrentPackInstalled(): Boolean = isPackInstalled(currentPack())
+
+    fun installedPackIds(): Set<String> =
+        SherpaModelCatalog.all.filter { isPackInstalled(it) }.map { it.id }.toSet()
+
+    /** Legacy alias for callers that predate multi-pack support. */
+    fun isModelInstalled(): Boolean = isCurrentPackInstalled()
+
     suspend fun downloadAndInstall(
+        packId: String,
         onProgress: suspend (SherpaDownloadProgress) -> Unit = {},
     ): Result<Unit> = withContext(Dispatchers.IO) {
+        val pack = SherpaModelCatalog.packById(packId)
+            ?: return@withContext Result.failure(IllegalArgumentException("未知语音包：$packId"))
         runCatching {
             onProgress(
                 SherpaDownloadProgress(
                     phase = SherpaDownloadPhase.Downloading,
-                    message = "正在下载离线语音包…",
+                    message = "正在下载 ${pack.displayName}…",
                 ),
             )
             modelRoot.mkdirs()
-            val archiveFile = File(appContext.cacheDir, "sherpa-vits-zh.tar.bz2")
+            val archiveFile = File(appContext.cacheDir, pack.archiveFileName)
             val client = OkHttpClient.Builder()
                 .connectTimeout(120, TimeUnit.SECONDS)
                 .readTimeout(120, TimeUnit.SECONDS)
@@ -46,7 +68,7 @@ class SherpaModelManager(
                 .followRedirects(true)
                 .followSslRedirects(true)
                 .build()
-            val request = Request.Builder().url(MODEL_ARCHIVE_URL).build()
+            val request = Request.Builder().url(pack.archiveUrl).build()
             onProgress(
                 SherpaDownloadProgress(
                     phase = SherpaDownloadPhase.Downloading,
@@ -73,7 +95,7 @@ class SherpaModelManager(
                                     phase = SherpaDownloadPhase.Downloading,
                                     bytesRead = bytesRead,
                                     totalBytes = totalBytes,
-                                    message = "正在下载离线语音包…",
+                                    message = "正在下载 ${pack.displayName}…",
                                 ),
                             )
                         }
@@ -88,27 +110,30 @@ class SherpaModelManager(
             )
             extractTarBz2(archiveFile, modelRoot)
             archiveFile.delete()
-            normalizeModelLayout()
-            if (!isModelInstalled()) {
-                throw IllegalStateException("解压后未找到 model.onnx，请重试")
+            normalizeModelLayout(pack)
+            if (!isPackInstalled(pack)) {
+                throw IllegalStateException("解压后未找到模型文件，请重试")
             }
-            diagnosticLog.i("SherpaModel", "model installed at ${modelDirectory().absolutePath}")
+            diagnosticLog.i(
+                "SherpaModel",
+                "pack ${pack.id} installed at ${modelDirectory(pack).absolutePath}",
+            )
             onProgress(
                 SherpaDownloadProgress(
                     phase = SherpaDownloadPhase.Idle,
-                    message = "离线语音包已就绪",
+                    message = "${pack.displayName} 已就绪",
                 ),
             )
         }
     }
 
-    internal fun normalizeModelLayout() {
-        if (isModelInstalled()) return
-        val modelOnnx = modelRoot.walkTopDown()
-            .firstOrNull { it.isFile && it.name == "model.onnx" }
+    internal fun normalizeModelLayout(pack: SherpaModelPack) {
+        if (isPackInstalled(pack)) return
+        val modelFile = modelRoot.walkTopDown()
+            .firstOrNull { it.isFile && it.name == pack.modelFileName }
             ?: return
-        val sourceDir = modelOnnx.parentFile ?: return
-        val target = modelDirectory()
+        val sourceDir = modelFile.parentFile ?: return
+        val target = modelDirectory(pack)
         if (sourceDir.absolutePath == target.absolutePath) return
         target.mkdirs()
         sourceDir.listFiles()?.forEach { file ->
@@ -119,6 +144,20 @@ class SherpaModelManager(
                 file.copyTo(dest, overwrite = true)
             }
         }
+    }
+
+    fun ruleFstsPath(pack: SherpaModelPack = currentPack()): String {
+        val dir = modelDirectory(pack)
+        return pack.ruleFsts
+            .map { File(dir, it) }
+            .filter { it.exists() }
+            .joinToString(",") { it.absolutePath }
+    }
+
+    fun ruleFarsPath(pack: SherpaModelPack = currentPack()): String {
+        if (pack.ruleFars.isBlank()) return ""
+        val file = File(modelDirectory(pack), pack.ruleFars)
+        return if (file.exists()) file.absolutePath else ""
     }
 
     private fun extractTarBz2(archive: File, destDir: File) {
@@ -140,8 +179,7 @@ class SherpaModelManager(
     }
 
     companion object {
+        /** Legacy directory name for the default Melo pack. */
         const val MODEL_DIR_NAME = "vits-melo-tts-zh_en"
-        const val MODEL_ARCHIVE_URL =
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-melo-tts-zh_en.tar.bz2"
     }
 }

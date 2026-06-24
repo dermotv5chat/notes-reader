@@ -49,6 +49,8 @@ class TtsController(
     private val diagnosticLog: AppDiagnosticLog,
     private val presynthPipeline: TtsPreSynthPipeline,
     private val presynthJobManager: com.andriod.reader.service.synthesis.TtsPresynthJobManager,
+    private val sherpaModelManager: SherpaModelManager,
+    private val sherpaFullTextSynthesizer: SherpaFullTextSynthesizer,
     private var onSegmentChanged: (Int, Int) -> Unit,
     private var onPlaybackStateChanged: (Boolean) -> Unit,
     private var onSpeakError: (String) -> Unit,
@@ -133,10 +135,21 @@ class TtsController(
 
     private fun ensurePresynthDeps() {
         if (sherpaBackend != null && presynthPlayer != null) return
-        val modelManager = SherpaModelManager(appContext, diagnosticLog)
-        val sherpaSynth = SherpaFullTextSynthesizer(appContext, modelManager, diagnosticLog)
-        sherpaBackend = OfflineSherpaSpeechBackend(appContext, modelManager, sherpaSynth, diagnosticLog)
+        sherpaBackend = OfflineSherpaSpeechBackend(
+            appContext,
+            sherpaModelManager,
+            settingsStore,
+            sherpaFullTextSynthesizer,
+            diagnosticLog,
+        )
         presynthPlayer = PresynthPlaybackBackend(appContext, settingsStore, diagnosticLog)
+    }
+
+    fun onSherpaSettingsChanged() {
+        ensurePresynthDeps()
+        sherpaBackend?.onModelSettingsChanged()
+        presynthPipeline.invalidateForSettingsChange()
+        lastPlainTextForPresynth?.let { presynthPipeline.refreshUiStateForNote(it) }
     }
 
     fun presynthProgress(): StateFlow<TtsPreSynthProgress> = presynthPipeline.progress
@@ -184,8 +197,10 @@ class TtsController(
         title: String,
         text: String,
         forceRegenerate: Boolean = false,
-    ): Boolean {
-        if (!wantsPresynthBackend()) return false
+    ): com.andriod.reader.service.synthesis.PresynthPrepareResult {
+        if (!wantsPresynthBackend()) {
+            return com.andriod.reader.service.synthesis.PresynthPrepareResult.Unavailable
+        }
         ensurePresynthDeps()
         val plain = MarkdownPlainText.stripForSpeech(text)
         lastPlainTextForPresynth = plain
@@ -1136,4 +1151,6 @@ interface TtsServiceEntryPoint {
     fun appDiagnosticLog(): AppDiagnosticLog
     fun ttsPreSynthPipeline(): TtsPreSynthPipeline
     fun ttsPresynthJobManager(): com.andriod.reader.service.synthesis.TtsPresynthJobManager
+    fun sherpaModelManager(): SherpaModelManager
+    fun sherpaFullTextSynthesizer(): SherpaFullTextSynthesizer
 }

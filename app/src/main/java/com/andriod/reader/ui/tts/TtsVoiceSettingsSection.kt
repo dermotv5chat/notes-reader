@@ -7,9 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
@@ -25,6 +23,7 @@ import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
 import com.andriod.reader.service.synthesis.SherpaDownloadPhase
+import com.andriod.reader.service.synthesis.SherpaModelPack
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,13 +39,20 @@ fun TtsVoiceSettingsSection(
     onSpeechBackendChange: (TtsSpeechBackend) -> Unit,
     voicePickerExpanded: Boolean,
     showBackendSelector: Boolean = true,
-    sherpaModelInstalled: Boolean = false,
+    sherpaModelPacks: List<SherpaModelPack> = emptyList(),
+    selectedSherpaPackId: String? = null,
+    installedSherpaPackIds: Set<String> = emptySet(),
+    selectedSherpaSpeakerId: Int = 0,
+    sherpaPackPickerExpanded: Boolean = false,
+    onSherpaPackPickerExpandedChange: (Boolean) -> Unit = {},
+    onSherpaPackSelected: (String) -> Unit = {},
+    onSherpaSpeakerSelected: (Int) -> Unit = {},
     isDownloadingSherpaModel: Boolean = false,
+    downloadingSherpaPackId: String? = null,
     sherpaDownloadHint: String? = null,
     sherpaDownloadProgress: Float? = null,
     sherpaDownloadPhase: SherpaDownloadPhase = SherpaDownloadPhase.Idle,
     sherpaDownloadBytesLabel: String? = null,
-    onDownloadSherpaModel: () -> Unit = {},
 ) {
     if (showBackendSelector) {
         Text("朗读引擎", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
@@ -85,17 +91,68 @@ fun TtsVoiceSettingsSection(
         )
     }
 
-    if (speechBackend == TtsSpeechBackend.OFFLINE_SHERPA) {
+    if (speechBackend == TtsSpeechBackend.OFFLINE_SHERPA && sherpaModelPacks.isNotEmpty()) {
         Text("离线语音包", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
-        Text(
-            if (sherpaModelInstalled) {
-                "已安装中文 VITS 模型，可在阅读页生成语音。"
-            } else {
-                "尚未下载离线语音包（约 50 MB）。"
-            },
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(bottom = 8.dp),
-        )
+        val selectedPack = sherpaModelPacks.find { it.id == selectedSherpaPackId }
+            ?: sherpaModelPacks.first()
+        val selectedInstalled = selectedSherpaPackId in installedSherpaPackIds
+        ExposedDropdownMenuBox(
+            expanded = sherpaPackPickerExpanded,
+            onExpandedChange = onSherpaPackPickerExpandedChange,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        ) {
+            OutlinedTextField(
+                value = selectedPack.dropdownLabel(selectedInstalled),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("语音包") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(sherpaPackPickerExpanded) },
+                modifier = Modifier.menuAnchor().fillMaxWidth(),
+            )
+            androidx.compose.material3.DropdownMenu(
+                expanded = sherpaPackPickerExpanded,
+                onDismissRequest = { onSherpaPackPickerExpandedChange(false) },
+            ) {
+                sherpaModelPacks.forEach { pack ->
+                    val installed = pack.id in installedSherpaPackIds
+                    DropdownMenuItem(
+                        text = { Text(pack.dropdownLabel(installed)) },
+                        onClick = {
+                            onSherpaPackPickerExpandedChange(false)
+                            onSherpaPackSelected(pack.id)
+                        },
+                    )
+                }
+            }
+        }
+
+        if (selectedPack.speakerCount > 1) {
+            Text("说话人", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                selectedPack.speakerLabels.forEachIndexed { index, label ->
+                    FilterChip(
+                        selected = selectedSherpaSpeakerId == index,
+                        onClick = { onSherpaSpeakerSelected(index) },
+                        enabled = selectedInstalled && !isDownloadingSherpaModel,
+                        label = { Text(label) },
+                    )
+                }
+            }
+        } else {
+            Text(
+                "当前模型为单音色（${selectedPack.genderLabel ?: selectedPack.speakerLabels.firstOrNull() ?: "默认"}）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+        }
+
         if (isDownloadingSherpaModel) {
             when {
                 sherpaDownloadProgress != null -> {
@@ -140,21 +197,25 @@ fun TtsVoiceSettingsSection(
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
+            if (!selectedInstalled) {
+                Text(
+                    "选中未下载的语音包后将自动开始下载。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(bottom = 12.dp),
+                )
+            }
         }
-        Button(
-            onClick = onDownloadSherpaModel,
-            enabled = !isDownloadingSherpaModel && !sherpaModelInstalled,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp),
-        ) {
-            Text(
-                when {
-                    sherpaModelInstalled -> "已下载"
-                    isDownloadingSherpaModel -> "下载中…"
-                    else -> "下载离线语音包"
-                },
-            )
+        downloadingSherpaPackId?.let { packId ->
+            val downloadingPack = sherpaModelPacks.find { it.id == packId }
+            if (isDownloadingSherpaModel && downloadingPack != null) {
+                Text(
+                    "正在下载：${downloadingPack.displayName}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
         }
     }
 
@@ -198,7 +259,7 @@ fun TtsVoiceSettingsSection(
                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(voicePickerExpanded) },
                 modifier = Modifier.menuAnchor().fillMaxWidth(),
             )
-            DropdownMenu(
+            androidx.compose.material3.DropdownMenu(
                 expanded = voicePickerExpanded,
                 onDismissRequest = { onVoicePickerExpandedChange(false) },
             ) {

@@ -334,6 +334,7 @@ fun NoteListScreen(
                                 presynthProgressFraction = presynthJob?.progressFraction,
                                 presynthEnabled = viewModel.canPreparePresynth() ||
                                     presynthJob?.uiState == TtsPresynthUiState.Preparing ||
+                                    presynthJob?.uiState == TtsPresynthUiState.Queued ||
                                     presynthJob?.uiState == TtsPresynthUiState.Ready,
                             ) {
                                 NoteRowContent(
@@ -414,6 +415,7 @@ fun NoteListScreen(
                                     presynthProgressFraction = presynthJob?.progressFraction,
                                     presynthEnabled = viewModel.canPreparePresynth() ||
                                         presynthJob?.uiState == TtsPresynthUiState.Preparing ||
+                                        presynthJob?.uiState == TtsPresynthUiState.Queued ||
                                         presynthJob?.uiState == TtsPresynthUiState.Ready,
                                 ) {
                                     NoteRowContent(
@@ -618,6 +620,7 @@ private fun presynthStatusLine(job: PresynthJobState?): String? {
         TtsPresynthUiState.Ready -> "语音已就绪"
         TtsPresynthUiState.Failed -> job.hint ?: "生成失败"
         TtsPresynthUiState.Stale -> "笔记已修改，请重新生成"
+        TtsPresynthUiState.Queued -> job.hint ?: "排队中"
         TtsPresynthUiState.NotPrepared,
         TtsPresynthUiState.Hidden,
         -> null

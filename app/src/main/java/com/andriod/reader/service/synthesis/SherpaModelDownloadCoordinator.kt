@@ -1,8 +1,5 @@
 package com.andriod.reader.service.synthesis
 
-import android.content.Context
-import com.andriod.reader.data.local.AppDiagnosticLog
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -17,20 +14,51 @@ data class SherpaDownloadUiSnapshot(
 
 @Singleton
 class SherpaModelDownloadCoordinator @Inject constructor(
-    @ApplicationContext context: Context,
-    private val diagnosticLog: AppDiagnosticLog,
+    private val modelManager: SherpaModelManager,
 ) {
-    private val modelManager = SherpaModelManager(context, diagnosticLog)
 
-    fun isInstalled(): Boolean = modelManager.isModelInstalled()
+    @Volatile
+    private var activeDownloadPackId: String? = null
+
+    fun currentPack(): SherpaModelPack = modelManager.currentPack()
+
+    fun catalog(): List<SherpaModelPack> = SherpaModelCatalog.all
+
+    fun isPackInstalled(packId: String): Boolean = modelManager.isPackInstalled(packId)
+
+    fun isCurrentPackInstalled(): Boolean = modelManager.isCurrentPackInstalled()
+
+    fun installedPackIds(): Set<String> = modelManager.installedPackIds()
+
+    fun isDownloading(): Boolean = activeDownloadPackId != null
+
+    fun downloadingPackId(): String? = activeDownloadPackId
+
+    /** @deprecated use [isCurrentPackInstalled] */
+    fun isInstalled(): Boolean = isCurrentPackInstalled()
+
+    suspend fun download(
+        packId: String,
+        onProgress: suspend (SherpaDownloadProgress) -> Unit,
+    ): Result<Unit> {
+        if (activeDownloadPackId != null) {
+            return Result.failure(IllegalStateException("已有下载任务进行中"))
+        }
+        activeDownloadPackId = packId
+        return try {
+            modelManager.downloadAndInstall(packId) { progress ->
+                withContext(Dispatchers.Main.immediate) {
+                    onProgress(progress)
+                }
+            }
+        } finally {
+            activeDownloadPackId = null
+        }
+    }
 
     suspend fun download(
         onProgress: suspend (SherpaDownloadProgress) -> Unit,
-    ): Result<Unit> = modelManager.downloadAndInstall { progress ->
-        withContext(Dispatchers.Main.immediate) {
-            onProgress(progress)
-        }
-    }
+    ): Result<Unit> = download(currentPack().id, onProgress)
 
     fun uiSnapshot(progress: SherpaDownloadProgress): SherpaDownloadUiSnapshot {
         val bytesLabel = progress.bytesLabel()

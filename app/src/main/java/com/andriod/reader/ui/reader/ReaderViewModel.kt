@@ -32,6 +32,7 @@ import com.andriod.reader.service.TtsPlaylistManager
 import com.andriod.reader.service.edge.NetworkAvailability
 import com.andriod.reader.service.synthesis.SherpaDownloadPhase
 import com.andriod.reader.service.synthesis.SherpaDownloadProgress
+import com.andriod.reader.service.synthesis.SherpaModelCatalog
 import com.andriod.reader.service.synthesis.SherpaModelDownloadCoordinator
 import com.andriod.reader.ui.NavArgs
 import com.andriod.reader.ui.Routes
@@ -90,6 +91,12 @@ data class ReaderUiState(
     val playbackMode: TtsPlaybackMode = TtsPlaybackMode.None,
     val presynthSnackbarActionPlay: Boolean = false,
     val sherpaModelInstalled: Boolean = false,
+    val sherpaModelPacks: List<com.andriod.reader.service.synthesis.SherpaModelPack> = emptyList(),
+    val selectedSherpaPackId: String = SherpaModelCatalog.MELO_ID,
+    val installedSherpaPackIds: Set<String> = emptySet(),
+    val selectedSherpaSpeakerId: Int = 0,
+    val sherpaPackPickerExpanded: Boolean = false,
+    val downloadingSherpaPackId: String? = null,
     val isDownloadingSherpaModel: Boolean = false,
     val sherpaDownloadHint: String? = null,
     val sherpaDownloadProgress: Float? = null,
@@ -156,15 +163,15 @@ class ReaderViewModel @Inject constructor(
         val canPrepare = TtsPlaybackManager.canPreparePresynth()
         val buttonEnabled = when (backend) {
             TtsSpeechBackend.ONLINE_EDGE -> canPrepare
-            TtsSpeechBackend.OFFLINE_SHERPA -> TtsPlaybackManager.sherpaModelInstalled()
+            TtsSpeechBackend.OFFLINE_SHERPA -> TtsPlaybackManager.sherpaModelInstalled(context)
             TtsSpeechBackend.SYSTEM -> false
         }
         val hint = when {
             backend == TtsSpeechBackend.ONLINE_EDGE && !canPrepare &&
                 progress.state != TtsPresynthUiState.Preparing ->
                 "当前无网络，无法生成；可改用离线高质量或系统朗读"
-            backend == TtsSpeechBackend.OFFLINE_SHERPA && !TtsPlaybackManager.sherpaModelInstalled() &&
-                !sherpaDownloadCoordinator.isInstalled() &&
+            backend == TtsSpeechBackend.OFFLINE_SHERPA && !TtsPlaybackManager.sherpaModelInstalled(context) &&
+                !sherpaDownloadCoordinator.isCurrentPackInstalled() &&
                 progress.state != TtsPresynthUiState.Ready ->
                 "请先下载离线语音包（朗读设置）"
             else -> progress.hint
@@ -186,7 +193,9 @@ class ReaderViewModel @Inject constructor(
                 presynthProgress = progress.chunkProgress,
                 presynthProgressFraction = progress.progressFraction,
                 presynthCharCount = progress.charCount,
-                presynthButtonEnabled = buttonEnabled || progress.state == TtsPresynthUiState.Preparing,
+                presynthButtonEnabled = buttonEnabled ||
+                    progress.state == TtsPresynthUiState.Preparing ||
+                    progress.state == TtsPresynthUiState.Queued,
                 presynthSnackbar = snackbar ?: it.presynthSnackbar,
                 presynthSnackbarActionPlay = snackbarActionPlay || it.presynthSnackbarActionPlay,
             )
@@ -198,30 +207,58 @@ class ReaderViewModel @Inject constructor(
         _uiState.update { it.copy(presynthSnackbar = null, presynthSnackbarActionPlay = false) }
     }
 
+    private fun syncPresynthStateForCurrentNote() {
+        val note = _uiState.value.note ?: return
+        val job = TtsPlaybackManager.presynthJobState(
+            context = context,
+            fileName = note.fileName,
+            title = note.title,
+            content = note.content,
+        )
+        syncPresynthProgress(
+            com.andriod.reader.service.synthesis.TtsPreSynthProgress(
+                state = job.uiState,
+                hint = job.hint,
+                chunkProgress = job.chunkProgress,
+                progressFraction = job.progressFraction,
+            ),
+        )
+    }
+
+    private fun handlePresynthPrepareResult(result: com.andriod.reader.service.synthesis.PresynthPrepareResult) {
+        val snackbar = when (result) {
+            is com.andriod.reader.service.synthesis.PresynthPrepareResult.Queued ->
+                "已加入生成队列（第 ${result.position} 位）"
+            com.andriod.reader.service.synthesis.PresynthPrepareResult.AlreadyQueued ->
+                "已在队列中"
+            else -> null
+        }
+        if (snackbar != null) {
+            _uiState.update { it.copy(presynthSnackbar = snackbar) }
+        }
+        syncPresynthStateForCurrentNote()
+    }
+
     private fun startPresynthProgressCollection() {
         presynthCollectJob?.cancel()
         presynthJobsCollectJob?.cancel()
         presynthCollectJob = viewModelScope.launch {
-            TtsPlaybackManager.presynthProgress()?.collect { progress ->
-                syncPresynthProgress(progress)
+            val progressFlow = TtsPlaybackManager.presynthProgress()
+            if (progressFlow != null) {
+                progressFlow.collect { progress ->
+                    syncPresynthProgress(progress)
+                }
+            } else {
+                syncPresynthStateForCurrentNote()
             }
         }
         presynthJobsCollectJob = viewModelScope.launch {
-            TtsPlaybackManager.presynthJobs(context).collect { jobs ->
-                val note = _uiState.value.note ?: return@collect
-                jobs[note.fileName]?.let { job ->
-                    syncPresynthProgress(
-                        com.andriod.reader.service.synthesis.TtsPreSynthProgress(
-                            state = job.uiState,
-                            hint = job.hint,
-                            chunkProgress = job.chunkProgress,
-                            progressFraction = job.progressFraction,
-                        ),
-                    )
-                }
+            TtsPlaybackManager.presynthJobs(context).collect {
+                syncPresynthStateForCurrentNote()
                 TtsPlaybackManager.refreshSession()
             }
         }
+        syncPresynthStateForCurrentNote()
     }
 
     private fun readVoicePreference(): TtsVoicePreference {
@@ -327,6 +364,7 @@ class ReaderViewModel @Inject constructor(
                 TtsPlaybackManager.refreshPresynthForNote(content)
             }
             startPresynthProgressCollection()
+            syncPresynthStateForCurrentNote()
             diagnosticLog.i("Reader", "initTts ready backend=${tts.speechBackend()}")
             _uiState.update {
                 it.copy(
@@ -343,7 +381,7 @@ class ReaderViewModel @Inject constructor(
         val backend = tts.speechBackend()
         val activeId = when (backend) {
             TtsSpeechBackend.ONLINE_EDGE -> settingsStore.getEdgeTtsVoiceId()
-            TtsSpeechBackend.OFFLINE_SHERPA -> "sherpa-vits-zh"
+            TtsSpeechBackend.OFFLINE_SHERPA -> "sherpa:${settingsStore.getSherpaSpeakerId()}"
             TtsSpeechBackend.SYSTEM ->
                 tts.diagnostics().voiceName?.takeIf { id -> options.any { it.id == id } }
                     ?: _uiState.value.selectedVoiceId
@@ -361,36 +399,98 @@ class ReaderViewModel @Inject constructor(
                 selectedVoiceId = activeId,
                 speechBackend = backend,
                 ttsQualityHint = hint,
-                sherpaModelInstalled = TtsPlaybackManager.sherpaModelInstalled() ||
-                    sherpaDownloadCoordinator.isInstalled(),
+                sherpaModelPacks = sherpaDownloadCoordinator.catalog(),
+                selectedSherpaPackId = settingsStore.getSherpaModelPackId(),
+                installedSherpaPackIds = sherpaDownloadCoordinator.installedPackIds(),
+                selectedSherpaSpeakerId = settingsStore.getSherpaSpeakerId(),
+                sherpaModelInstalled = TtsPlaybackManager.sherpaModelInstalled(context) ||
+                    sherpaDownloadCoordinator.isCurrentPackInstalled(),
             )
         }
     }
 
+    fun onSherpaPackPickerExpandedChange(expanded: Boolean) {
+        _uiState.update { it.copy(sherpaPackPickerExpanded = expanded) }
+    }
+
+    fun onSherpaPackSelected(packId: String) {
+        if (sherpaDownloadCoordinator.isPackInstalled(packId)) {
+            selectSherpaPack(packId)
+        } else {
+            downloadSherpaPack(packId)
+        }
+    }
+
+    fun onSherpaSpeakerSelected(speakerId: Int) {
+        val pack = SherpaModelCatalog.packById(_uiState.value.selectedSherpaPackId) ?: return
+        if (speakerId !in 0 until pack.speakerCount) return
+        settingsStore.saveSherpaSpeakerId(speakerId)
+        TtsPlaybackManager.onSherpaSettingsChanged()
+        _uiState.value.note?.content?.let { TtsPlaybackManager.refreshPresynthForNote(it) }
+        _uiState.update { it.copy(selectedSherpaSpeakerId = speakerId) }
+        controller?.let { refreshVoiceOptions(it) }
+    }
+
+    private fun selectSherpaPack(packId: String) {
+        val pack = SherpaModelCatalog.packById(packId) ?: return
+        settingsStore.saveSherpaModelPackId(packId)
+        val sid = settingsStore.getSherpaSpeakerId()
+        if (sid >= pack.speakerCount) {
+            settingsStore.saveSherpaSpeakerId(pack.defaultSid)
+        }
+        TtsPlaybackManager.onSherpaSettingsChanged()
+        _uiState.value.note?.content?.let { TtsPlaybackManager.refreshPresynthForNote(it) }
+        _uiState.update {
+            it.copy(
+                selectedSherpaPackId = packId,
+                selectedSherpaSpeakerId = settingsStore.getSherpaSpeakerId(),
+                installedSherpaPackIds = sherpaDownloadCoordinator.installedPackIds(),
+                sherpaModelInstalled = sherpaDownloadCoordinator.isPackInstalled(packId),
+            )
+        }
+        controller?.let { refreshVoiceOptions(it) }
+    }
+
     fun downloadSherpaModel() {
+        downloadSherpaPack(_uiState.value.selectedSherpaPackId)
+    }
+
+    private fun downloadSherpaPack(packId: String) {
         if (_uiState.value.isDownloadingSherpaModel) return
         if (!NetworkAvailability.isConnected(context)) {
             _uiState.update { it.copy(sherpaDownloadSnackbar = "无网络，无法下载") }
             return
         }
-        diagnosticLog.i("Reader", "sherpa model download started")
+        val pack = SherpaModelCatalog.packById(packId) ?: return
+        diagnosticLog.i("Reader", "sherpa model download started pack=$packId")
         _uiState.update {
             it.copy(
+                selectedSherpaPackId = packId,
+                downloadingSherpaPackId = packId,
                 isDownloadingSherpaModel = true,
                 sherpaDownloadPhase = SherpaDownloadPhase.Downloading,
                 sherpaDownloadProgress = null,
                 sherpaDownloadBytesLabel = null,
-                sherpaDownloadHint = "正在下载离线语音包…",
-                sherpaDownloadSnackbar = "开始下载离线语音包（约 50 MB）…",
+                sherpaDownloadHint = "正在下载 ${pack.displayName}…",
+                sherpaDownloadSnackbar = "开始下载 ${pack.displayName}（约 ${pack.estimatedSizeMb} MB）…",
             )
         }
         viewModelScope.launch {
-            val result = sherpaDownloadCoordinator.download { progress ->
+            val result = sherpaDownloadCoordinator.download(packId) { progress ->
                 updateSherpaDownloadProgressUi(progress)
             }
             result.fold(
                 onSuccess = {
-                    diagnosticLog.i("Reader", "sherpa model download success")
+                    diagnosticLog.i("Reader", "sherpa model download success pack=$packId")
+                    settingsStore.saveSherpaModelPackId(packId)
+                    val installedPack = SherpaModelCatalog.packById(packId)
+                    if (installedPack != null) {
+                        val sid = settingsStore.getSherpaSpeakerId()
+                        if (sid >= installedPack.speakerCount) {
+                            settingsStore.saveSherpaSpeakerId(installedPack.defaultSid)
+                        }
+                    }
+                    TtsPlaybackManager.onSherpaSettingsChanged()
                 },
                 onFailure = { error ->
                     diagnosticLog.e("Reader", "sherpa model download failed: ${error.message}", error)
@@ -400,20 +500,24 @@ class ReaderViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     isDownloadingSherpaModel = false,
-                    sherpaModelInstalled = sherpaDownloadCoordinator.isInstalled(),
+                    downloadingSherpaPackId = null,
+                    installedSherpaPackIds = sherpaDownloadCoordinator.installedPackIds(),
+                    sherpaModelInstalled = sherpaDownloadCoordinator.isPackInstalled(packId),
+                    selectedSherpaSpeakerId = settingsStore.getSherpaSpeakerId(),
                     sherpaDownloadPhase = SherpaDownloadPhase.Idle,
                     sherpaDownloadProgress = null,
                     sherpaDownloadBytesLabel = null,
                     sherpaDownloadHint = result.fold(
-                        onSuccess = { "离线语音包已就绪" },
+                        onSuccess = { "${pack.displayName} 已就绪" },
                         onFailure = { error -> error.message ?: "下载失败" },
                     ),
                     sherpaDownloadSnackbar = result.fold(
-                        onSuccess = { "离线语音包已下载" },
+                        onSuccess = { "${pack.displayName} 已下载" },
                         onFailure = { error -> "下载失败：${error.message ?: "未知错误"}" },
                     ),
                 )
             }
+            controller?.let { refreshVoiceOptions(it) }
         }
     }
 
@@ -577,6 +681,7 @@ class ReaderViewModel @Inject constructor(
             refreshVoiceOptions(tts)
             _uiState.value.note?.content?.let { TtsPlaybackManager.refreshPresynthForNote(it) }
             startPresynthProgressCollection()
+            syncPresynthStateForCurrentNote()
             _uiState.update {
                 it.copy(
                     speechBackend = backend,
@@ -724,25 +829,29 @@ class ReaderViewModel @Inject constructor(
         val host = lastHostContext ?: context
         val state = _uiState.value.presynthState
         when (state) {
-            TtsPresynthUiState.Preparing -> TtsPlaybackManager.cancelPresynth(note.fileName)
-            TtsPresynthUiState.Ready -> {
+            TtsPresynthUiState.Preparing,
+            TtsPresynthUiState.Queued,
+            -> TtsPlaybackManager.cancelPresynth(note.fileName)
+            TtsPresynthUiState.Ready -> handlePresynthPrepareResult(
                 TtsPlaybackManager.preparePresynth(
                     context = host,
                     fileName = note.fileName,
                     title = note.title,
                     content = note.content,
                     forceRegenerate = true,
-                )
-            }
+                ),
+            )
             TtsPresynthUiState.Stale,
             TtsPresynthUiState.Failed,
             TtsPresynthUiState.NotPrepared,
-            -> TtsPlaybackManager.preparePresynth(
-                context = host,
-                fileName = note.fileName,
-                title = note.title,
-                content = note.content,
-                forceRegenerate = state != TtsPresynthUiState.NotPrepared,
+            -> handlePresynthPrepareResult(
+                TtsPlaybackManager.preparePresynth(
+                    context = host,
+                    fileName = note.fileName,
+                    title = note.title,
+                    content = note.content,
+                    forceRegenerate = state != TtsPresynthUiState.NotPrepared,
+                ),
             )
             TtsPresynthUiState.Hidden -> Unit
         }
@@ -756,6 +865,7 @@ class ReaderViewModel @Inject constructor(
         val refreshed = noteRepository.getNote(fileName) ?: return
         val blocks = practiceRepository.parseBlocks(refreshed.content, refreshed.fileName)
         TtsPlaybackManager.refreshPresynthForNote(refreshed.content)
+        syncPresynthStateForCurrentNote()
         _uiState.update { current ->
             current.copy(
                 note = refreshed,
@@ -886,7 +996,11 @@ class ReaderViewModel @Inject constructor(
             } ?: false,
             canSelectRepeatAll = playlistManager.state.value.items.isNotEmpty(),
             lastSleepTimerPresetSubtitle = settingsStore.getLastSleepTimerPreset().displaySubtitle(),
-            sherpaModelInstalled = sherpaDownloadCoordinator.isInstalled(),
+            sherpaModelPacks = sherpaDownloadCoordinator.catalog(),
+            selectedSherpaPackId = settingsStore.getSherpaModelPackId(),
+            installedSherpaPackIds = sherpaDownloadCoordinator.installedPackIds(),
+            selectedSherpaSpeakerId = settingsStore.getSherpaSpeakerId(),
+            sherpaModelInstalled = sherpaDownloadCoordinator.isCurrentPackInstalled(),
         )
     }
 }

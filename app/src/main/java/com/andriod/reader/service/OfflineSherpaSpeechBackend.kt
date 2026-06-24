@@ -2,6 +2,7 @@ package com.andriod.reader.service
 
 import android.content.Context
 import com.andriod.reader.data.local.AppDiagnosticLog
+import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.service.edge.ExoPlayerSpeechPlayer
 import com.andriod.reader.service.synthesis.SherpaFullTextSynthesizer
@@ -23,6 +24,7 @@ import java.io.File
 class OfflineSherpaSpeechBackend(
     context: Context,
     private val modelManager: SherpaModelManager,
+    private val settingsStore: SettingsStore,
     private val synthesizer: SherpaFullTextSynthesizer,
     private val diagnosticLog: AppDiagnosticLog,
 ) : SpeechSynthesisBackend {
@@ -33,21 +35,39 @@ class OfflineSherpaSpeechBackend(
     private var speechRate = 1.0f
     private var speechPitch = 1.0f
 
-    fun isModelInstalled(): Boolean = modelManager.isModelInstalled()
+    fun isModelInstalled(): Boolean = modelManager.isCurrentPackInstalled()
 
-    suspend fun awaitReady(): Boolean = modelManager.isModelInstalled()
+    suspend fun awaitReady(): Boolean = modelManager.isCurrentPackInstalled()
 
     override suspend fun prepare(): Boolean = awaitReady()
 
-    override fun isReady(): Boolean = modelManager.isModelInstalled()
+    override fun isReady(): Boolean = modelManager.isCurrentPackInstalled()
 
-    override fun listVoiceOptions(): List<TtsVoiceOption> = listOf(
-        TtsVoiceOption(
-            id = "sherpa-vits-zh",
-            label = "离线 · 中文 VITS",
-            isOnline = false,
-        ),
-    )
+    override fun listVoiceOptions(): List<TtsVoiceOption> {
+        val pack = modelManager.currentPack()
+        if (!modelManager.isPackInstalled(pack)) return emptyList()
+        return if (pack.speakerCount > 1) {
+            pack.speakerLabels.mapIndexed { index, label ->
+                TtsVoiceOption(
+                    id = "sherpa:$index",
+                    label = "离线 · $label",
+                    isOnline = false,
+                )
+            }
+        } else {
+            listOf(
+                TtsVoiceOption(
+                    id = "sherpa:0",
+                    label = "离线 · ${pack.displayName}${pack.genderLabel?.let { " · $it" } ?: ""}",
+                    isOnline = false,
+                ),
+            )
+        }
+    }
+
+    fun onModelSettingsChanged() {
+        synthesizer.release()
+    }
 
     override fun setSpeechRate(rate: Float) {
         speechRate = rate
@@ -128,22 +148,24 @@ class OfflineSherpaSpeechBackend(
     }
 
     override fun diagnostics(): TtsHelper.TtsDiagnostics {
-        val installed = modelManager.isModelInstalled()
+        val pack = modelManager.currentPack()
+        val installed = modelManager.isPackInstalled(pack)
+        val sid = settingsStore.getSherpaSpeakerId()
         return TtsHelper.TtsDiagnostics(
             enginePackage = "sherpa-onnx",
             engineLabel = "离线高质量（Sherpa）",
-            voiceName = "sherpa-vits-zh",
+            voiceName = pack.speakerLabel(sid),
             voiceLocale = "zh-CN",
             voiceQuality = null,
-            chineseVoiceCount = if (installed) 1 else 0,
+            chineseVoiceCount = if (installed) pack.speakerCount else 0,
             isGoogleEngine = false,
             googleTtsInstalled = TtsHelper.isGoogleTtsInstalled(appContext),
             isLanguageFallback = false,
             isOnlineVoice = false,
             recommendation = if (installed) {
-                "使用 Sherpa 离线 neural；整篇预合成后播放更连贯。"
+                "使用 ${pack.displayName} 离线 neural；整篇预合成后播放更连贯。"
             } else {
-                "请下载离线语音包后使用。"
+                "请下载「${pack.displayName}」语音包后使用。"
             },
         )
     }

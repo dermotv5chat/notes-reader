@@ -29,7 +29,7 @@ fun PresynthActionIcon(
 ) {
     IconButton(
         onClick = onClick,
-        enabled = enabled || state == TtsPresynthUiState.Preparing,
+        enabled = enabled || state == TtsPresynthUiState.Preparing || state == TtsPresynthUiState.Queued,
         modifier = modifier.testTag("presynth_action_icon"),
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -53,6 +53,7 @@ fun PresynthActionIcon(
             val (icon, tint) = when (state) {
                 TtsPresynthUiState.Ready -> Icons.Default.Check to MaterialTheme.colorScheme.primary
                 TtsPresynthUiState.Failed -> Icons.Default.Refresh to MaterialTheme.colorScheme.error
+                TtsPresynthUiState.Queued -> Icons.Default.AutoAwesome to MaterialTheme.colorScheme.outline
                 TtsPresynthUiState.Preparing -> Icons.Default.AutoAwesome to MaterialTheme.colorScheme.onSurfaceVariant
                 else -> Icons.Default.AutoAwesome to MaterialTheme.colorScheme.onSurfaceVariant
             }

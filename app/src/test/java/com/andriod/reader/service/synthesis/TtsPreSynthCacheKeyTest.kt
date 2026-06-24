@@ -41,6 +41,44 @@ class TtsPreSynthCacheKeyTest {
         assertNotEquals(edge, sherpa)
     }
 
+    @Test
+    fun differentSherpaPack_producesDifferentKey() {
+        val melo = TtsPreSynthCacheKey.compute(
+            plainText = sampleText,
+            backend = TtsSpeechBackend.OFFLINE_SHERPA,
+            voiceId = "melo-zh-en:sid0",
+            speechRate = 1.0f,
+            speechPitch = 1.0f,
+        )
+        val zhLl = TtsPreSynthCacheKey.compute(
+            plainText = sampleText,
+            backend = TtsSpeechBackend.OFFLINE_SHERPA,
+            voiceId = "zh-ll:sid0",
+            speechRate = 1.0f,
+            speechPitch = 1.0f,
+        )
+        assertNotEquals(melo, zhLl)
+    }
+
+    @Test
+    fun differentSherpaSpeaker_producesDifferentKey() {
+        val sid0 = TtsPreSynthCacheKey.compute(
+            plainText = sampleText,
+            backend = TtsSpeechBackend.OFFLINE_SHERPA,
+            voiceId = "zh-ll:sid0",
+            speechRate = 1.0f,
+            speechPitch = 1.0f,
+        )
+        val sid1 = TtsPreSynthCacheKey.compute(
+            plainText = sampleText,
+            backend = TtsSpeechBackend.OFFLINE_SHERPA,
+            voiceId = "zh-ll:sid1",
+            speechRate = 1.0f,
+            speechPitch = 1.0f,
+        )
+        assertNotEquals(sid0, sid1)
+    }
+
     private fun key(speechRate: Float, speechPitch: Float): String =
         TtsPreSynthCacheKey.compute(
             plainText = sampleText,

@@ -6,6 +6,7 @@ import androidx.security.crypto.MasterKey
 import com.andriod.reader.domain.GitHubSettings
 import com.andriod.reader.service.LastSleepTimerPreset
 import com.andriod.reader.domain.TtsSpeechBackend
+import com.andriod.reader.service.synthesis.SherpaModelCatalog
 import com.andriod.reader.ui.theme.AppThemeMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -101,6 +102,20 @@ class SettingsStore @Inject constructor(
         prefs.edit().putString(KEY_EDGE_TTS_VOICE, voiceId.trim()).apply()
     }
 
+    fun getSherpaModelPackId(): String =
+        prefs.getString(KEY_SHERPA_MODEL_PACK, SherpaModelCatalog.MELO_ID)
+            ?: SherpaModelCatalog.MELO_ID
+
+    fun saveSherpaModelPackId(packId: String) {
+        prefs.edit().putString(KEY_SHERPA_MODEL_PACK, packId.trim()).apply()
+    }
+
+    fun getSherpaSpeakerId(): Int = prefs.getInt(KEY_SHERPA_SPEAKER_ID, 0)
+
+    fun saveSherpaSpeakerId(speakerId: Int) {
+        prefs.edit().putInt(KEY_SHERPA_SPEAKER_ID, speakerId.coerceAtLeast(0)).apply()
+    }
+
     fun saveAppThemeMode(mode: AppThemeMode) {
         prefs.edit().putString(KEY_APP_THEME_MODE, mode.name).apply()
         _appThemeMode.value = mode
@@ -151,6 +166,8 @@ class SettingsStore @Inject constructor(
         private const val KEY_LAST_SLEEP_TIMER_MINUTES = "last_sleep_timer_minutes"
         private const val KEY_TTS_SPEECH_BACKEND = "tts_speech_backend"
         private const val KEY_EDGE_TTS_VOICE = "edge_tts_voice"
+        private const val KEY_SHERPA_MODEL_PACK = "sherpa_model_pack_id"
+        private const val KEY_SHERPA_SPEAKER_ID = "sherpa_speaker_id"
         const val DEFAULT_EDGE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
     }
 }

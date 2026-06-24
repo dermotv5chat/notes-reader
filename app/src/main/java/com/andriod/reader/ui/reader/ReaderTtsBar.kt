@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.service.TtsPlaybackMode
 import com.andriod.reader.ui.tts.PresynthActionIcon
 import com.andriod.reader.ui.tts.TtsVoiceSettingsSection
@@ -76,9 +77,12 @@ fun ReaderPlaybackBar(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-        val showPresynth = uiState.presynthState != com.andriod.reader.domain.TtsPresynthUiState.Hidden
+        val showPresynth = uiState.speechBackend == TtsSpeechBackend.ONLINE_EDGE ||
+            uiState.speechBackend == TtsSpeechBackend.OFFLINE_SHERPA
         if (showPresynth) {
-            uiState.presynthHint?.let { hint ->
+            uiState.presynthHint?.takeIf {
+                uiState.presynthState != com.andriod.reader.domain.TtsPresynthUiState.Hidden
+            }?.let { hint ->
                 Text(
                     text = buildString {
                         append(hint)
@@ -178,9 +182,12 @@ fun ReaderPlaybackBar(
                 modifier = Modifier.padding(bottom = 4.dp),
             )
         }
+        val controlScroll = rememberScrollState()
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(controlScroll),
+            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(
@@ -442,7 +449,9 @@ fun ReaderTtsSettingsSheet(
     onVoiceSelected: (String) -> Unit,
     onSpeechRateChange: (Float) -> Unit,
     onSpeechPitchChange: (Float) -> Unit,
-    onDownloadSherpaModel: () -> Unit,
+    onSherpaPackPickerExpandedChange: (Boolean) -> Unit,
+    onSherpaPackSelected: (String) -> Unit,
+    onSherpaSpeakerSelected: (Int) -> Unit,
     onClearSherpaDownloadSnackbar: () -> Unit,
 ) {
     if (!uiState.ttsSettingsVisible) return
@@ -486,13 +495,20 @@ fun ReaderTtsSettingsSheet(
                     onVoiceSelected = onVoiceSelected,
                     onSpeechBackendChange = onSpeechBackendChange,
                     voicePickerExpanded = uiState.voicePickerExpanded,
-                    sherpaModelInstalled = uiState.sherpaModelInstalled,
+                    sherpaModelPacks = uiState.sherpaModelPacks,
+                    selectedSherpaPackId = uiState.selectedSherpaPackId,
+                    installedSherpaPackIds = uiState.installedSherpaPackIds,
+                    selectedSherpaSpeakerId = uiState.selectedSherpaSpeakerId,
+                    sherpaPackPickerExpanded = uiState.sherpaPackPickerExpanded,
+                    onSherpaPackPickerExpandedChange = onSherpaPackPickerExpandedChange,
+                    onSherpaPackSelected = onSherpaPackSelected,
+                    onSherpaSpeakerSelected = onSherpaSpeakerSelected,
                     isDownloadingSherpaModel = uiState.isDownloadingSherpaModel,
+                    downloadingSherpaPackId = uiState.downloadingSherpaPackId,
                     sherpaDownloadHint = uiState.sherpaDownloadHint,
                     sherpaDownloadProgress = uiState.sherpaDownloadProgress,
                     sherpaDownloadPhase = uiState.sherpaDownloadPhase,
                     sherpaDownloadBytesLabel = uiState.sherpaDownloadBytesLabel,
-                    onDownloadSherpaModel = onDownloadSherpaModel,
                 )
 
                 Text("语速 ${"%.1f".format(uiState.speechRate)}x")
