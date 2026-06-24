@@ -7,6 +7,8 @@ data class TtsPlaybackSession(
     val segmentTotal: Int = 0,
     val isPlaying: Boolean = false,
     val isPaused: Boolean = false,
+    val playbackMode: TtsPlaybackMode = TtsPlaybackMode.None,
+    val presynthGenerating: Boolean = false,
     val sleepTimerMode: SleepTimerMode = SleepTimerMode.Off,
     val sleepTimerRemainingMs: Long? = null,
     val sleepTimerLabel: String? = null,

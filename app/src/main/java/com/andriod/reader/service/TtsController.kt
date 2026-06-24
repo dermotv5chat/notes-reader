@@ -30,7 +30,6 @@ import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
 import com.andriod.reader.service.edge.EdgeTtsVoices
 import com.andriod.reader.service.edge.NetworkAvailability
-import com.andriod.reader.service.synthesis.EdgeFullTextSynthesizer
 import com.andriod.reader.service.synthesis.PresynthPlaybackBackend
 import com.andriod.reader.service.synthesis.SherpaFullTextSynthesizer
 import com.andriod.reader.service.synthesis.SherpaModelManager
@@ -48,6 +47,8 @@ class TtsController(
     context: Context,
     private val settingsStore: SettingsStore,
     private val diagnosticLog: AppDiagnosticLog,
+    private val presynthPipeline: TtsPreSynthPipeline,
+    private val presynthJobManager: com.andriod.reader.service.synthesis.TtsPresynthJobManager,
     private var onSegmentChanged: (Int, Int) -> Unit,
     private var onPlaybackStateChanged: (Boolean) -> Unit,
     private var onSpeakError: (String) -> Unit,
@@ -108,11 +109,11 @@ class TtsController(
     private var onlineBackend: OnlineEdgeSpeechBackend? = null
     private var onlineActive = false
     private var sherpaBackend: OfflineSherpaSpeechBackend? = null
-    private var presynthPipeline: TtsPreSynthPipeline? = null
     private var presynthPlayer: PresynthPlaybackBackend? = null
     private var presynthActive = false
     private var presynthSegmentTotal = 0
     private var lastPlainTextForPresynth: String? = null
+    private var playbackMode: TtsPlaybackMode = TtsPlaybackMode.None
 
     private fun ensureOnlineBackend(): OnlineEdgeSpeechBackend {
         if (onlineBackend == null) {
@@ -131,31 +132,21 @@ class TtsController(
         wantsOnlineBackend() || wantsSherpaBackend()
 
     private fun ensurePresynthDeps() {
-        if (presynthPipeline != null) return
+        if (sherpaBackend != null && presynthPlayer != null) return
         val modelManager = SherpaModelManager(appContext, diagnosticLog)
         val sherpaSynth = SherpaFullTextSynthesizer(appContext, modelManager, diagnosticLog)
         sherpaBackend = OfflineSherpaSpeechBackend(appContext, modelManager, sherpaSynth, diagnosticLog)
-        presynthPipeline = TtsPreSynthPipeline(
-            context = appContext,
-            settingsStore = settingsStore,
-            diagnosticLog = diagnosticLog,
-            edgeSynthesizer = EdgeFullTextSynthesizer(appContext, settingsStore, diagnosticLog),
-            sherpaSynthesizer = sherpaSynth,
-        )
         presynthPlayer = PresynthPlaybackBackend(appContext, settingsStore, diagnosticLog)
     }
 
-    fun presynthProgress(): StateFlow<TtsPreSynthProgress> {
-        ensurePresynthDeps()
-        return presynthPipeline!!.progress
-    }
+    fun presynthProgress(): StateFlow<TtsPreSynthProgress> = presynthPipeline.progress
 
     fun refreshPresynthForText(text: String) {
         if (!wantsPresynthBackend()) return
         ensurePresynthDeps()
         val plain = MarkdownPlainText.stripForSpeech(text)
         lastPlainTextForPresynth = plain
-        presynthPipeline!!.refreshUiStateForNote(plain)
+        presynthPipeline.refreshUiStateForNote(plain)
     }
 
     fun canPreparePresynth(): Boolean {
@@ -168,7 +159,12 @@ class TtsController(
         }
     }
 
-    fun isPresynthReady(): Boolean = presynthPipeline?.isReady() == true
+    fun isPresynthReady(): Boolean = presynthPipeline.isReady()
+
+    fun isPresynthCacheReady(text: String): Boolean {
+        val plain = MarkdownPlainText.stripForSpeech(text)
+        return presynthPipeline.isCacheReady(plain)
+    }
 
     fun sherpaModelInstalled(): Boolean {
         ensurePresynthDeps()
@@ -184,37 +180,35 @@ class TtsController(
     }
 
     fun preparePresynth(
+        fileName: String,
+        title: String,
         text: String,
         forceRegenerate: Boolean = false,
-        autoPlayWhenReady: Boolean = false,
-    ) {
-        if (!wantsPresynthBackend()) return
+    ): Boolean {
+        if (!wantsPresynthBackend()) return false
         ensurePresynthDeps()
         val plain = MarkdownPlainText.stripForSpeech(text)
         lastPlainTextForPresynth = plain
-        presynthPipeline!!.prepare(
-            plainText = plain,
-            forceRegenerate = forceRegenerate,
-            autoPlayWhenReady = autoPlayWhenReady,
-            onAutoPlay = if (autoPlayWhenReady) {
-                { playPreparedPresynth(plain) }
-            } else {
-                null
-            },
-        )
+        return presynthJobManager.prepareBackground(fileName, title, text, forceRegenerate)
     }
 
-    fun cancelPresynth() {
-        presynthPipeline?.cancelPrepare()
+    fun cancelPresynth(fileName: String? = null) {
+        if (fileName != null) {
+            presynthJobManager.cancel(fileName)
+        } else {
+            presynthJobManager.cancelAll()
+        }
     }
 
     fun invalidatePresynthForSettingsChange() {
-        presynthPipeline?.invalidateForSettingsChange()
+        presynthPipeline.invalidateForSettingsChange()
     }
 
     fun invalidatePresynthForContentChange() {
-        presynthPipeline?.invalidateForContentChange()
+        presynthPipeline.invalidateForContentChange()
     }
+
+    fun currentPlaybackMode(): TtsPlaybackMode = playbackMode
 
     private fun refreshOnlineAvailability(): Boolean {
         if (!wantsOnlineBackend()) {
@@ -303,6 +297,7 @@ class TtsController(
         ),
         isPlaying = isPlaying.get() && !isPaused.get(),
         isPaused = isPlaying.get() && isPaused.get(),
+        playbackMode = playbackMode,
     )
 
     fun updateCallbacks(
@@ -379,7 +374,7 @@ class TtsController(
 
     fun applySpeechBackend(backend: TtsSpeechBackend) {
         settingsStore.saveTtsSpeechBackend(backend)
-        presynthPipeline?.invalidateForSettingsChange()
+        presynthPipeline.invalidateForSettingsChange()
         if (backend == TtsSpeechBackend.ONLINE_EDGE) {
             val edgeVoice = settingsStore.getEdgeTtsVoiceId()
             if (!EdgeTtsVoices.isKnownVoice(edgeVoice)) {
@@ -537,13 +532,23 @@ class TtsController(
             startPresynthPlayback(fileName, title, plain)
             return playbackSnapshot().fileName == fileName
         }
-        startSystemSegmentPlayback(fileName, title, plain)
+        startSegmentPlayback(fileName, title, plain)
         return playbackSnapshot().fileName == fileName
     }
 
-    private fun startSystemSegmentPlayback(fileName: String, title: String, plain: String) {
+    private fun resolveSegmentPlaybackMode(): TtsPlaybackMode = when {
+        wantsSherpaBackend() && sherpaBackend?.isModelInstalled() == true -> TtsPlaybackMode.SegmentSherpa
+        wantsOnlineBackend() && shouldUseOnline() -> TtsPlaybackMode.SegmentOnline
+        else -> TtsPlaybackMode.SegmentSystem
+    }
+
+    private fun isSherpaSegmentActive(): Boolean =
+        !presynthActive && wantsSherpaBackend() && sherpaBackend?.isModelInstalled() == true && segments.isNotEmpty()
+
+    private fun startSegmentPlayback(fileName: String, title: String, plain: String) {
         presynthActive = false
         presynthSegmentTotal = 0
+        playbackMode = resolveSegmentPlaybackMode()
         segments.clear()
         segments.addAll(splitSegments(plain))
         if (segments.isEmpty()) {
@@ -570,45 +575,21 @@ class TtsController(
     private fun startPresynthPlayback(fileName: String, title: String, plain: String) {
         ensurePresynthDeps()
         lastPlainTextForPresynth = plain
-        presynthPipeline!!.refreshUiStateForNote(plain)
-        if (presynthPipeline!!.isReady()) {
+        presynthPipeline.refreshUiStateForNote(plain)
+        if (presynthPipeline.loadCachedResult(plain)) {
+            playbackMode = TtsPlaybackMode.Presynth
             playPreparedPresynth(plain)
-            return
+        } else {
+            startSegmentPlayback(fileName, title, plain)
         }
-        if (!canPreparePresynth()) {
-            val message = presynthUnavailableMessage()
-                ?: com.andriod.reader.service.synthesis.TtsPreSynthPipeline.unavailableMessageFor(
-                    settingsStore.getTtsSpeechBackend(),
-                )
-            onSpeakError(message)
-            currentFileName = null
-            currentTitle = null
-            notifySessionChanged()
-            return
-        }
-        val currentState = presynthPipeline!!.progress.value.state
-        if (currentState == com.andriod.reader.domain.TtsPresynthUiState.Preparing) {
-            return
-        }
-        presynthPipeline!!.prepare(
-            plainText = plain,
-            forceRegenerate = false,
-            autoPlayWhenReady = true,
-            onAutoPlay = { playPreparedPresynth(plain) },
-            onPrepareFailed = { message ->
-                onSpeakError(message)
-                stop()
-            },
-        )
-        isPlaying.set(false)
-        isPaused.set(false)
-        onSegmentChanged(0, 0)
-        onPlaybackStateChanged(false)
-        notifySessionChanged()
     }
 
     private fun playPreparedPresynth(plain: String) {
-        val result = presynthPipeline?.currentPresynthResult()
+        if (!presynthPipeline.loadCachedResult(plain)) {
+            onSpeakError("语音尚未就绪")
+            return
+        }
+        val result = presynthPipeline.currentPresynthResult()
         if (result == null) {
             onSpeakError("语音尚未就绪")
             return
@@ -618,6 +599,7 @@ class TtsController(
             return
         }
         presynthActive = true
+        playbackMode = TtsPlaybackMode.Presynth
         segments.clear()
         currentIndex = 0
         presynthSegmentTotal = result.audioFiles.size.coerceAtLeast(1)
@@ -644,8 +626,8 @@ class TtsController(
                 presynthActive = false
                 presynthPlayer?.stop()
                 if (ready && tts != null) {
-                    onSpeakError("预合成播放失败，已改用系统语音：$message")
-                    startSystemSegmentPlayback(currentFileName ?: "", currentTitle ?: "", plain)
+                    onSpeakError("预合成播放失败，已改用逐段朗读：$message")
+                    startSegmentPlayback(currentFileName ?: "", currentTitle ?: "", plain)
                 } else {
                     onSpeakError(message)
                     stop()
@@ -687,6 +669,16 @@ class TtsController(
             }
             return
         }
+        if (isSherpaSegmentActive()) {
+            if (!isPaused.get()) {
+                sherpaBackend?.pause()
+                isPaused.set(true)
+                wakeLock.release()
+                onPlaybackStateChanged(false)
+                notifySessionChanged()
+            }
+            return
+        }
         if (shouldUseOnline()) {
             if (!isPaused.get()) {
                 ensureOnlineBackend().pause()
@@ -721,6 +713,8 @@ class TtsController(
         wakeLock.acquire()
         if (presynthActive) {
             presynthPlayer?.resume()
+        } else if (isSherpaSegmentActive()) {
+            sherpaBackend?.resume()
         } else if (shouldUseOnline()) {
             ensureOnlineBackend().resume()
         } else {
@@ -731,9 +725,11 @@ class TtsController(
     fun stop() {
         diagnosticLog.i("TtsController", "stop")
         onlineBackend?.stop()
+        sherpaBackend?.stop()
         presynthPlayer?.stop()
         presynthActive = false
         presynthSegmentTotal = 0
+        playbackMode = TtsPlaybackMode.None
         tts?.stop()
         abandonAudioFocus()
         wakeLock.release()
@@ -753,6 +749,7 @@ class TtsController(
         if (presynthActive) return
         if (currentIndex < segments.lastIndex) {
             onlineBackend?.stop()
+            sherpaBackend?.stop()
             tts?.stop()
             currentIndex++
             onSegmentChanged(currentIndex, segments.size)
@@ -778,8 +775,8 @@ class TtsController(
         sherpaBackend = null
         presynthPlayer?.release()
         presynthPlayer = null
-        presynthPipeline = null
         presynthActive = false
+        playbackMode = TtsPlaybackMode.None
         tts?.shutdown()
         tts = null
         ready = false
@@ -864,6 +861,41 @@ class TtsController(
             stop()
             return
         }
+        if (wantsSherpaBackend()) {
+            ensurePresynthDeps()
+            if (sherpaBackend?.isModelInstalled() == true) {
+                diagnosticLog.i(
+                    "TtsController",
+                    "speakText sherpa utterance=$utteranceId chars=${text.length}",
+                )
+                sherpaBackend!!.speak(
+                    text = text,
+                    utteranceId = utteranceId,
+                    onComplete = { handleSegmentFinished() },
+                    onError = { message ->
+                        diagnosticLog.e("TtsController", "sherpa error: $message")
+                        if (ready && tts != null) {
+                            playbackMode = TtsPlaybackMode.SegmentSystem
+                            onSpeakError("离线合成失败，已改用系统语音：$message")
+                            speakWithSystem(text, utteranceId)
+                        } else {
+                            onSpeakError(message)
+                            stop()
+                        }
+                    },
+                )
+                return
+            }
+            if (ready && tts != null) {
+                playbackMode = TtsPlaybackMode.SegmentSystem
+                onSpeakError("离线语音包未就绪，已改用系统语音朗读")
+                speakWithSystem(text, utteranceId)
+                return
+            }
+            onSpeakError("离线语音包未就绪，无法朗读")
+            stop()
+            return
+        }
         if (wantsOnlineBackend()) {
             if (shouldUseOnline()) {
                 diagnosticLog.i(
@@ -877,6 +909,7 @@ class TtsController(
                     onError = { message ->
                         diagnosticLog.e("TtsController", "online error: $message")
                         if (ready && tts != null) {
+                            playbackMode = TtsPlaybackMode.SegmentSystem
                             onSpeakError("在线合成失败，已改用系统语音：$message")
                             speakWithSystem(text, utteranceId)
                         } else {
@@ -889,6 +922,7 @@ class TtsController(
             }
             diagnosticLog.w("TtsController", "speakText offline fallback utterance=$utteranceId")
             if (ready && tts != null) {
+                playbackMode = TtsPlaybackMode.SegmentSystem
                 onSpeakError("当前无网络，已改用系统语音朗读")
                 speakWithSystem(text, utteranceId)
                 return
@@ -898,6 +932,7 @@ class TtsController(
             return
         }
         diagnosticLog.d("TtsController", "speakText system utterance=$utteranceId chars=${text.length}")
+        playbackMode = TtsPlaybackMode.SegmentSystem
         speakWithSystem(text, utteranceId)
     }
 
@@ -1085,8 +1120,10 @@ object TtsNotificationHelper {
             session.isPlaying -> "正在朗读"
             else -> "已停止"
         }
+        val modeLabel = session.playbackMode.displayLabel()
+        val withMode = if (modeLabel != null) "$base · $modeLabel" else base
         val timerLabel = session.sleepTimerLabel?.takeIf { session.sleepTimerActive }
-        return if (timerLabel != null) "$base · $timerLabel" else base
+        return if (timerLabel != null) "$withMode · $timerLabel" else withMode
     }
 }
 
@@ -1097,4 +1134,6 @@ interface TtsServiceEntryPoint {
     fun noteRepository(): com.andriod.reader.data.repository.NoteRepository
     fun ttsPlaylistManager(): TtsPlaylistManager
     fun appDiagnosticLog(): AppDiagnosticLog
+    fun ttsPreSynthPipeline(): TtsPreSynthPipeline
+    fun ttsPresynthJobManager(): com.andriod.reader.service.synthesis.TtsPresynthJobManager
 }

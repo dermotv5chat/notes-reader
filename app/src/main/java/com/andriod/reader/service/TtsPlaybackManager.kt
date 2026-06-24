@@ -6,6 +6,8 @@ import com.andriod.reader.data.local.MarkdownPlainText
 import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.service.edge.NetworkAvailability
+import com.andriod.reader.service.synthesis.PresynthJobState
+import com.andriod.reader.service.synthesis.TtsPresynthJobManager
 import com.andriod.reader.service.synthesis.TtsPreSynthPipeline
 import com.andriod.reader.service.synthesis.TtsPreSynthProgress
 import dagger.hilt.android.EntryPointAccessors
@@ -16,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 object TtsPlaybackManager {
     private var controller: TtsController? = null
     private var appContext: Context? = null
+    private var presynthJobManager: TtsPresynthJobManager? = null
     private val _session = MutableStateFlow(TtsPlaybackSession())
     val session: StateFlow<TtsPlaybackSession> = _session.asStateFlow()
 
@@ -56,14 +59,32 @@ object TtsPlaybackManager {
         ).also { sleepTimer = it }
     }
 
+    private fun entryPoint(context: Context): TtsServiceEntryPoint {
+        return EntryPointAccessors.fromApplication(
+            context.applicationContext,
+            TtsServiceEntryPoint::class.java,
+        )
+    }
+
+    private fun ensureJobManager(context: Context): TtsPresynthJobManager {
+        appContext = context.applicationContext
+        return presynthJobManager ?: entryPoint(context).ttsPresynthJobManager().also {
+            presynthJobManager = it
+        }
+    }
+
     private fun syncSession() {
         val base = controller?.playbackSnapshot() ?: TtsPlaybackSession()
         updateSleepTimerForPlayback(base)
         val timer = sleepTimer?.snapshot() ?: TtsSleepTimerState()
+        val generating = base.fileName?.let { fileName ->
+            presynthJobManager?.jobs?.value?.get(fileName)?.isPreparing == true
+        } ?: false
         _session.value = base.copy(
             sleepTimerMode = timer.mode,
             sleepTimerRemainingMs = timer.remainingMs,
             sleepTimerLabel = timer.label,
+            presynthGenerating = generating,
         )
     }
 
@@ -100,12 +121,16 @@ object TtsPlaybackManager {
     fun getOrCreate(context: Context): TtsController {
         appContext = context.applicationContext
         ensureTimer(context)
+        ensureJobManager(context)
         val existing = controller
         if (existing != null) return existing
+        val ep = entryPoint(context)
         return TtsController(
             context = context.applicationContext,
             settingsStore = settingsStore(context),
             diagnosticLog = diagnosticLog(context),
+            presynthPipeline = ep.ttsPreSynthPipeline(),
+            presynthJobManager = ep.ttsPresynthJobManager(),
             onSegmentChanged = attachedSegmentCallback,
             onPlaybackStateChanged = attachedPlaybackCallback,
             onSpeakError = ::dispatchSpeakError,
@@ -138,6 +163,19 @@ object TtsPlaybackManager {
     fun getOrNull(): TtsController? = controller
 
     fun presynthProgress(): StateFlow<TtsPreSynthProgress>? = controller?.presynthProgress()
+
+    fun presynthJobs(context: Context): StateFlow<Map<String, PresynthJobState>> =
+        ensureJobManager(context).jobs
+
+    fun presynthJobState(
+        context: Context,
+        fileName: String,
+        title: String,
+        content: String,
+    ): PresynthJobState {
+        val plain = MarkdownPlainText.stripForSpeech(content)
+        return ensureJobManager(context).jobStateFor(fileName, title, plain)
+    }
 
     fun refreshPresynthForNote(content: String) {
         controller?.refreshPresynthForText(content)
@@ -177,15 +215,22 @@ object TtsPlaybackManager {
     fun isPresynthReady(): Boolean = controller?.isPresynthReady() == true
 
     fun preparePresynth(
+        context: Context,
+        fileName: String,
+        title: String,
         content: String,
         forceRegenerate: Boolean = false,
-        autoPlayWhenReady: Boolean = false,
-    ) {
-        controller?.preparePresynth(content, forceRegenerate, autoPlayWhenReady)
+    ): Boolean {
+        val ctrl = getOrCreate(context)
+        return ctrl.preparePresynth(fileName, title, content, forceRegenerate)
     }
 
-    fun cancelPresynth() {
-        controller?.cancelPresynth()
+    fun cancelPresynth(fileName: String? = null) {
+        controller?.cancelPresynth(fileName)
+    }
+
+    fun refreshSession() {
+        syncSession()
     }
 
     fun sherpaModelInstalled(): Boolean = controller?.sherpaModelInstalled() == true
@@ -222,10 +267,7 @@ object TtsPlaybackManager {
         val started = ctrl.start(fileName, title, content)
         if (started) {
             runCatching {
-                EntryPointAccessors.fromApplication(
-                    context.applicationContext,
-                    TtsServiceEntryPoint::class.java,
-                ).ttsPlaylistManager().onPlaybackStarted(fileName)
+                entryPoint(context).ttsPlaylistManager().onPlaybackStarted(fileName)
             }
         }
         syncSession()
@@ -351,6 +393,7 @@ object TtsPlaybackManager {
         controller?.shutdown()
         controller = null
         sleepTimer = null
+        presynthJobManager = null
         sleepTimerPausedWithPlayback = false
         _session.value = TtsPlaybackSession()
     }

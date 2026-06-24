@@ -52,7 +52,17 @@ fun ReaderScreen(
 
     LaunchedEffect(uiState.presynthSnackbar) {
         uiState.presynthSnackbar?.let { message ->
-            snackbarHostState.showSnackbar(message)
+            if (uiState.presynthSnackbarActionPlay) {
+                val result = snackbarHostState.showSnackbar(
+                    message = message,
+                    actionLabel = "播放",
+                )
+                if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                    viewModel.togglePlayPause()
+                }
+            } else {
+                snackbarHostState.showSnackbar(message)
+            }
             viewModel.clearPresynthSnackbar()
         }
     }

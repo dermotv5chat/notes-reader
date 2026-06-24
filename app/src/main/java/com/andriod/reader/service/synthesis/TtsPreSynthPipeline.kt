@@ -22,6 +22,7 @@ data class TtsPreSynthProgress(
     val state: TtsPresynthUiState = TtsPresynthUiState.Hidden,
     val hint: String? = null,
     val chunkProgress: String? = null,
+    val progressFraction: Float? = null,
     val charCount: Int = 0,
     val contentHash: String? = null,
 )
@@ -105,7 +106,45 @@ class TtsPreSynthPipeline(
 
     fun isReady(): Boolean = currentResult != null && _progress.value.state == TtsPresynthUiState.Ready
 
+    fun isCacheReady(plainText: String): Boolean {
+        if (!usesPresynthBackend()) return false
+        val cacheKey = cacheKeyFor(plainText)
+        return findCachedResult(cacheKey) != null
+    }
+
+    fun uiStateForPlainText(plainText: String): TtsPreSynthProgress {
+        if (!usesPresynthBackend()) {
+            return TtsPreSynthProgress(state = TtsPresynthUiState.Hidden)
+        }
+        val hash = contentHash(plainText)
+        val charCount = plainText.length
+        if (prepareJob?.isActive == true && lastPlainText == plainText) {
+            return _progress.value
+        }
+        val cached = findCachedResult(cacheKeyFor(plainText))
+        return when {
+            cached != null -> TtsPreSynthProgress(
+                state = TtsPresynthUiState.Ready,
+                hint = "语音已就绪",
+                charCount = charCount,
+                contentHash = hash,
+            )
+            else -> TtsPreSynthProgress(
+                state = TtsPresynthUiState.NotPrepared,
+                hint = presynthHintForBackend(),
+                charCount = charCount,
+                contentHash = hash,
+            )
+        }
+    }
+
     fun currentPresynthResult(): TtsPreSynthResult? = currentResult
+
+    fun loadCachedResult(plainText: String): Boolean {
+        if (!usesPresynthBackend()) return false
+        refreshUiStateForNote(plainText)
+        return isReady()
+    }
 
     fun prepare(
         plainText: String,
@@ -140,6 +179,7 @@ class TtsPreSynthPipeline(
                 _progress.value = TtsPreSynthProgress(
                     state = TtsPresynthUiState.Preparing,
                     hint = "正在生成语音…（约 ${plainText.length} 字）",
+                    progressFraction = null,
                     charCount = plainText.length,
                     contentHash = hash,
                 )
@@ -221,8 +261,10 @@ class TtsPreSynthPipeline(
                 TtsPreSynthResult.Whole(cacheKey, outFile)
             } else {
                 val files = chunks.mapIndexed { index, chunk ->
+                    val fraction = (index + 1).toFloat() / chunks.size.toFloat()
                     _progress.value = _progress.value.copy(
                         chunkProgress = "${index + 1}/${chunks.size}",
+                        progressFraction = fraction,
                         hint = "正在生成语音…（第 ${index + 1}/${chunks.size} 段）",
                     )
                     val outFile = File(outDir, "chunk-$index.$ext")

@@ -56,6 +56,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.andriod.reader.domain.ConflictAction
 import com.andriod.reader.domain.SyncStatus
+import com.andriod.reader.domain.TtsPresynthUiState
+import com.andriod.reader.service.synthesis.PresynthJobState
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -104,6 +106,13 @@ fun NoteListScreen(
             viewModel.undoLastDelete()
         } else {
             viewModel.clearUndoTrash()
+        }
+    }
+
+    LaunchedEffect(uiState.presynthSnackbar) {
+        uiState.presynthSnackbar?.let { message ->
+            snackbar.showSnackbar(message)
+            viewModel.clearPresynthSnackbar()
         }
     }
 
@@ -297,6 +306,7 @@ fun NoteListScreen(
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(uiState.notes, key = { it.fileName }) { note ->
+                            val presynthJob = viewModel.presynthJobFor(note)
                             SwipeNoteRow(
                                 isExpanded = uiState.expandedRowKey == note.fileName,
                                 onExpandedChange = { expanded ->
@@ -315,10 +325,21 @@ fun NoteListScreen(
                                         onAddToQueue(note.fileName, note.title)
                                     }
                                 },
+                                onPresynth = if (uiState.showPresynthActions) {
+                                    { viewModel.onPresynthClick(note) }
+                                } else {
+                                    null
+                                },
+                                presynthState = presynthJob?.uiState ?: TtsPresynthUiState.Hidden,
+                                presynthProgressFraction = presynthJob?.progressFraction,
+                                presynthEnabled = viewModel.canPreparePresynth() ||
+                                    presynthJob?.uiState == TtsPresynthUiState.Preparing ||
+                                    presynthJob?.uiState == TtsPresynthUiState.Ready,
                             ) {
                                 NoteRowContent(
                                     title = note.title,
                                     subtitle = note.fileName,
+                                    presynthStatus = presynthStatusLine(presynthJob),
                                     updatedAt = formatter.format(note.updatedAt.atZone(ZoneId.systemDefault())),
                                     syncStatus = note.syncStatus,
                                 )
@@ -363,33 +384,48 @@ fun NoteListScreen(
                                         FolderRowContent(name = entry.name)
                                     }
                                 }
-                                is NoteTreeBrowser.Entry.File -> SwipeNoteRow(
-                                    isExpanded = uiState.expandedRowKey == entry.note.fileName,
+                                is NoteTreeBrowser.Entry.File -> {
+                                    val note = entry.note
+                                    val presynthJob = viewModel.presynthJobFor(note)
+                                    SwipeNoteRow(
+                                    isExpanded = uiState.expandedRowKey == note.fileName,
                                     onExpandedChange = { expanded ->
                                         if (expanded) {
-                                            viewModel.onRowExpanded(entry.note.fileName)
-                                        } else if (uiState.expandedRowKey == entry.note.fileName) {
+                                            viewModel.onRowExpanded(note.fileName)
+                                        } else if (uiState.expandedRowKey == note.fileName) {
                                             viewModel.clearExpandedRow()
                                         }
                                     },
-                                    onOpen = { onOpenNote(entry.note.fileName) },
-                                    onEdit = { onEditNote(entry.note.fileName) },
-                                    onRename = { viewModel.requestRenameNote(entry.note.fileName) },
-                                    onDelete = { viewModel.requestDelete(entry.note.fileName) },
+                                    onOpen = { onOpenNote(note.fileName) },
+                                    onEdit = { onEditNote(note.fileName) },
+                                    onRename = { viewModel.requestRenameNote(note.fileName) },
+                                    onDelete = { viewModel.requestDelete(note.fileName) },
                                     onAddToQueue = {
-                                        if (!isInQueue(entry.note.fileName)) {
-                                            onAddToQueue(entry.note.fileName, entry.note.title)
+                                        if (!isInQueue(note.fileName)) {
+                                            onAddToQueue(note.fileName, note.title)
                                         }
                                     },
+                                    onPresynth = if (uiState.showPresynthActions) {
+                                        { viewModel.onPresynthClick(note) }
+                                    } else {
+                                        null
+                                    },
+                                    presynthState = presynthJob?.uiState ?: TtsPresynthUiState.Hidden,
+                                    presynthProgressFraction = presynthJob?.progressFraction,
+                                    presynthEnabled = viewModel.canPreparePresynth() ||
+                                        presynthJob?.uiState == TtsPresynthUiState.Preparing ||
+                                        presynthJob?.uiState == TtsPresynthUiState.Ready,
                                 ) {
                                     NoteRowContent(
-                                        title = entry.note.title,
+                                        title = note.title,
                                         subtitle = null,
+                                        presynthStatus = presynthStatusLine(presynthJob),
                                         updatedAt = formatter.format(
-                                            entry.note.updatedAt.atZone(ZoneId.systemDefault()),
+                                            note.updatedAt.atZone(ZoneId.systemDefault()),
                                         ),
-                                        syncStatus = entry.note.syncStatus,
+                                        syncStatus = note.syncStatus,
                                     )
+                                }
                                 }
                             }
                         }
@@ -571,10 +607,28 @@ private fun RowScope.FolderRowContent(name: String) {
     )
 }
 
+private fun presynthStatusLine(job: PresynthJobState?): String? {
+    job ?: return null
+    return when (job.uiState) {
+        TtsPresynthUiState.Preparing -> buildString {
+            append("正在生成语音")
+            job.progressFraction?.let { append(" ${(it * 100).toInt()}%") }
+            job.chunkProgress?.let { append(" · 第 $it 段") }
+        }
+        TtsPresynthUiState.Ready -> "语音已就绪"
+        TtsPresynthUiState.Failed -> job.hint ?: "生成失败"
+        TtsPresynthUiState.Stale -> "笔记已修改，请重新生成"
+        TtsPresynthUiState.NotPrepared,
+        TtsPresynthUiState.Hidden,
+        -> null
+    }
+}
+
 @Composable
 private fun RowScope.NoteRowContent(
     title: String,
     subtitle: String?,
+    presynthStatus: String? = null,
     updatedAt: String,
     syncStatus: SyncStatus,
 ) {
@@ -586,6 +640,13 @@ private fun RowScope.NoteRowContent(
     Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
     Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium)
+        presynthStatus?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
         subtitle?.let {
             Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
         }

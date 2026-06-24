@@ -25,6 +25,7 @@ import com.andriod.reader.service.SleepTimerPresetPolicy
 import com.andriod.reader.service.SleepTimerMode
 import com.andriod.reader.service.TtsHelper
 import com.andriod.reader.service.TtsVoiceQuality
+import com.andriod.reader.service.TtsPlaybackMode
 import com.andriod.reader.service.TtsPlaybackManager
 import com.andriod.reader.service.TtsPlaybackSession
 import com.andriod.reader.service.TtsPlaylistManager
@@ -85,6 +86,9 @@ data class ReaderUiState(
     val presynthCharCount: Int = 0,
     val presynthButtonEnabled: Boolean = true,
     val presynthSnackbar: String? = null,
+    val presynthProgressFraction: Float? = null,
+    val playbackMode: TtsPlaybackMode = TtsPlaybackMode.None,
+    val presynthSnackbarActionPlay: Boolean = false,
     val sherpaModelInstalled: Boolean = false,
     val isDownloadingSherpaModel: Boolean = false,
     val sherpaDownloadHint: String? = null,
@@ -119,6 +123,7 @@ class ReaderViewModel @Inject constructor(
     private var pendingStartAfterPermission = false
     private var lastPresynthState: TtsPresynthUiState = TtsPresynthUiState.Hidden
     private var presynthCollectJob: Job? = null
+    private var presynthJobsCollectJob: Job? = null
 
     companion object {
         private const val NOTIFICATION_PERMISSION_MESSAGE =
@@ -172,28 +177,49 @@ class ReaderViewModel @Inject constructor(
         } else {
             null
         }
+        val snackbarActionPlay = snackbar != null
         lastPresynthState = progress.state
         _uiState.update {
             it.copy(
                 presynthState = progress.state,
                 presynthHint = hint,
                 presynthProgress = progress.chunkProgress,
+                presynthProgressFraction = progress.progressFraction,
                 presynthCharCount = progress.charCount,
                 presynthButtonEnabled = buttonEnabled || progress.state == TtsPresynthUiState.Preparing,
                 presynthSnackbar = snackbar ?: it.presynthSnackbar,
+                presynthSnackbarActionPlay = snackbarActionPlay || it.presynthSnackbarActionPlay,
             )
         }
+        TtsPlaybackManager.refreshSession()
     }
 
     fun clearPresynthSnackbar() {
-        _uiState.update { it.copy(presynthSnackbar = null) }
+        _uiState.update { it.copy(presynthSnackbar = null, presynthSnackbarActionPlay = false) }
     }
 
     private fun startPresynthProgressCollection() {
         presynthCollectJob?.cancel()
+        presynthJobsCollectJob?.cancel()
         presynthCollectJob = viewModelScope.launch {
             TtsPlaybackManager.presynthProgress()?.collect { progress ->
                 syncPresynthProgress(progress)
+            }
+        }
+        presynthJobsCollectJob = viewModelScope.launch {
+            TtsPlaybackManager.presynthJobs(context).collect { jobs ->
+                val note = _uiState.value.note ?: return@collect
+                jobs[note.fileName]?.let { job ->
+                    syncPresynthProgress(
+                        com.andriod.reader.service.synthesis.TtsPreSynthProgress(
+                            state = job.uiState,
+                            hint = job.hint,
+                            chunkProgress = job.chunkProgress,
+                            progressFraction = job.progressFraction,
+                        ),
+                    )
+                }
+                TtsPlaybackManager.refreshSession()
             }
         }
     }
@@ -228,8 +254,10 @@ class ReaderViewModel @Inject constructor(
                 sleepTimerRemainingMs = session.sleepTimerRemainingMs,
                 sleepTimerLabel = session.sleepTimerLabel,
                 estimatedNoteRemainingMinutes = estimatedMinutes,
+                playbackMode = session.playbackMode,
             )
         }
+        TtsPlaybackManager.refreshSession()
     }
 
     private fun attachUiCallbacks() {
@@ -647,8 +675,6 @@ class ReaderViewModel @Inject constructor(
 
         if (state.isPlaying) {
             controller?.pause()
-        } else if (state.presynthState == TtsPresynthUiState.Preparing) {
-            _uiState.update { it.copy(ttsError = "正在生成语音，请稍候…") }
         } else if (!session.hasActiveSession || session.fileName != note.fileName) {
             if (note.content.isBlank()) {
                 _uiState.update { it.copy(ttsError = "笔记内容为空") }
@@ -695,22 +721,35 @@ class ReaderViewModel @Inject constructor(
 
     fun onPresynthClick() {
         val note = _uiState.value.note ?: return
+        val host = lastHostContext ?: context
         val state = _uiState.value.presynthState
         when (state) {
-            TtsPresynthUiState.Preparing -> TtsPlaybackManager.cancelPresynth()
+            TtsPresynthUiState.Preparing -> TtsPlaybackManager.cancelPresynth(note.fileName)
             TtsPresynthUiState.Ready -> {
-                TtsPlaybackManager.preparePresynth(note.content, forceRegenerate = true)
+                TtsPlaybackManager.preparePresynth(
+                    context = host,
+                    fileName = note.fileName,
+                    title = note.title,
+                    content = note.content,
+                    forceRegenerate = true,
+                )
             }
             TtsPresynthUiState.Stale,
             TtsPresynthUiState.Failed,
             TtsPresynthUiState.NotPrepared,
-            -> TtsPlaybackManager.preparePresynth(note.content, forceRegenerate = state != TtsPresynthUiState.NotPrepared)
+            -> TtsPlaybackManager.preparePresynth(
+                context = host,
+                fileName = note.fileName,
+                title = note.title,
+                content = note.content,
+                forceRegenerate = state != TtsPresynthUiState.NotPrepared,
+            )
             TtsPresynthUiState.Hidden -> Unit
         }
     }
 
     fun onPresynthCancel() {
-        TtsPlaybackManager.cancelPresynth()
+        _uiState.value.note?.fileName?.let { TtsPlaybackManager.cancelPresynth(it) }
     }
 
     fun refreshNote() {

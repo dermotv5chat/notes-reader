@@ -31,6 +31,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
@@ -51,6 +54,8 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.andriod.reader.service.TtsPlaybackMode
+import com.andriod.reader.ui.tts.PresynthActionIcon
 import com.andriod.reader.ui.tts.TtsVoiceSettingsSection
 import com.andriod.reader.domain.TtsQueueRepeatMode
 import com.andriod.reader.service.SleepTimerDisplay
@@ -71,12 +76,16 @@ fun ReaderPlaybackBar(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
-        if (uiState.presynthState != com.andriod.reader.domain.TtsPresynthUiState.Hidden) {
+        val showPresynth = uiState.presynthState != com.andriod.reader.domain.TtsPresynthUiState.Hidden
+        if (showPresynth) {
             uiState.presynthHint?.let { hint ->
                 Text(
                     text = buildString {
                         append(hint)
-                        uiState.presynthProgress?.let { append("（$it）") }
+                        uiState.presynthProgress?.let { append(" · 第 $it 段") }
+                        uiState.presynthProgressFraction?.let { fraction ->
+                            append(" · ${(fraction * 100).toInt()}%")
+                        }
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -85,23 +94,32 @@ fun ReaderPlaybackBar(
                         .testTag("reader_presynth_status"),
                 )
             }
-            OutlinedButton(
-                onClick = onPresynthClick,
-                enabled = uiState.presynthButtonEnabled || uiState.presynthState == com.andriod.reader.domain.TtsPresynthUiState.Preparing,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-                    .testTag("reader_presynth_button"),
+        }
+        val modeLabel = uiState.playbackMode.displayLabel()
+        if (modeLabel != null || uiState.segmentTotal > 1) {
+            Row(
+                modifier = Modifier.padding(bottom = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    when (uiState.presynthState) {
-                        com.andriod.reader.domain.TtsPresynthUiState.Preparing -> "取消"
-                        com.andriod.reader.domain.TtsPresynthUiState.Ready -> "重新生成"
-                        com.andriod.reader.domain.TtsPresynthUiState.Stale -> "更新语音"
-                        com.andriod.reader.domain.TtsPresynthUiState.Failed -> "重试"
-                        else -> "生成语音"
-                    },
-                )
+                if (uiState.segmentTotal > 1) {
+                    Text(
+                        text = "段落 ${uiState.segmentIndex + 1} / ${uiState.segmentTotal}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                modeLabel?.let { label ->
+                    AssistChip(
+                        onClick = {},
+                        enabled = false,
+                        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                        colors = AssistChipDefaults.assistChipColors(
+                            disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        modifier = Modifier.testTag("reader_playback_mode_chip"),
+                    )
+                }
             }
         }
         when {
@@ -220,6 +238,15 @@ fun ReaderPlaybackBar(
             }
             IconButton(onClick = onOpenTtsSettings, enabled = uiState.isTtsReady) {
                 Icon(Icons.Default.Tune, contentDescription = "朗读设置")
+            }
+            if (showPresynth) {
+                PresynthActionIcon(
+                    state = uiState.presynthState,
+                    progressFraction = uiState.presynthProgressFraction,
+                    enabled = uiState.presynthButtonEnabled,
+                    onClick = onPresynthClick,
+                    modifier = Modifier.testTag("reader_presynth_button"),
+                )
             }
         }
     }

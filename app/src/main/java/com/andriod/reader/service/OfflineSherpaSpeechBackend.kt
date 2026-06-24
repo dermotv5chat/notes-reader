@@ -3,13 +3,22 @@ package com.andriod.reader.service
 import android.content.Context
 import com.andriod.reader.data.local.AppDiagnosticLog
 import com.andriod.reader.domain.TtsVoiceOption
+import com.andriod.reader.service.edge.ExoPlayerSpeechPlayer
 import com.andriod.reader.service.synthesis.SherpaFullTextSynthesizer
 import com.andriod.reader.service.synthesis.SherpaModelManager
 import com.andriod.reader.service.synthesis.SpeechSynthesisBackend
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.File
 
 /**
- * Offline neural speech via Sherpa-onnx (presynth pipeline).
+ * Offline neural speech via Sherpa-onnx (presynth pipeline + segment playback).
  */
 class OfflineSherpaSpeechBackend(
     context: Context,
@@ -18,6 +27,9 @@ class OfflineSherpaSpeechBackend(
     private val diagnosticLog: AppDiagnosticLog,
 ) : SpeechSynthesisBackend {
     private val appContext = context.applicationContext
+    private val player = ExoPlayerSpeechPlayer(appContext, diagnosticLog)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var synthesisJob: Job? = null
     private var speechRate = 1.0f
     private var speechPitch = 1.0f
 
@@ -39,6 +51,7 @@ class OfflineSherpaSpeechBackend(
 
     override fun setSpeechRate(rate: Float) {
         speechRate = rate
+        player.setSpeechRate(rate)
     }
 
     override fun setPitch(value: Float) {
@@ -51,7 +64,40 @@ class OfflineSherpaSpeechBackend(
         onComplete: () -> Unit,
         onError: (String) -> Unit,
     ) {
-        onError("Sherpa 离线引擎请使用整篇预合成播放")
+        if (!isModelInstalled()) {
+            onError("请先在设置中下载离线语音包")
+            return
+        }
+        synthesisJob?.cancel()
+        synthesisJob = scope.launch {
+            try {
+                val cacheFile = File(appContext.cacheDir, "sherpa-segment/$utteranceId.wav")
+                cacheFile.parentFile?.mkdirs()
+                diagnosticLog.i(
+                    "OfflineSherpa",
+                    "synthesis start utterance=$utteranceId chars=${text.length}",
+                )
+                withContext(Dispatchers.IO) {
+                    withTimeout(SYNTHESIS_TIMEOUT_MS) {
+                        synthesizer.synthesizeToFile(text, cacheFile, speechRate, speechPitch)
+                    }
+                }
+                val size = cacheFile.length()
+                if (!cacheFile.exists() || size < 100L) {
+                    diagnosticLog.e("OfflineSherpa", "synthesis invalid file size=$size utterance=$utteranceId")
+                    onError("离线合成失败：未生成有效音频")
+                    return@launch
+                }
+                diagnosticLog.i("OfflineSherpa", "synthesis ok utterance=$utteranceId bytes=$size")
+                player.play(cacheFile, utteranceId, onComplete, onError)
+            } catch (e: CancellationException) {
+                diagnosticLog.d("OfflineSherpa", "synthesis cancelled utterance=$utteranceId")
+            } catch (e: Exception) {
+                val message = "离线合成失败：${e.message ?: "未知错误"}"
+                diagnosticLog.e("OfflineSherpa", message, e)
+                onError(message)
+            }
+        }
     }
 
     override suspend fun synthesizeFullText(
@@ -61,13 +107,23 @@ class OfflineSherpaSpeechBackend(
         speechPitch: Float,
     ): File = synthesizer.synthesizeToFile(text, outputFile, speechRate, speechPitch)
 
-    override fun pause() = Unit
+    override fun pause() {
+        player.pause()
+    }
 
-    override fun resume() = Unit
+    override fun resume() {
+        player.resume()
+    }
 
-    override fun stop() = Unit
+    override fun stop() {
+        synthesisJob?.cancel()
+        synthesisJob = null
+        player.stop()
+    }
 
     override fun shutdown() {
+        stop()
+        player.release()
         synthesizer.release()
     }
 
@@ -90,5 +146,9 @@ class OfflineSherpaSpeechBackend(
                 "请下载离线语音包后使用。"
             },
         )
+    }
+
+    companion object {
+        private const val SYNTHESIS_TIMEOUT_MS = 120_000L
     }
 }

@@ -1,8 +1,11 @@
 package com.andriod.reader.ui.list
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.andriod.reader.data.local.MarkdownPlainText
 import com.andriod.reader.data.local.NotePathNames
+import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.data.repository.NoteRepository
 import com.andriod.reader.data.repository.SyncRepository
 import com.andriod.reader.domain.ConflictAction
@@ -11,13 +14,18 @@ import com.andriod.reader.domain.SyncConflict
 import com.andriod.reader.domain.SyncResult
 import com.andriod.reader.domain.SyncStatus
 import com.andriod.reader.domain.TrashEntry
+import com.andriod.reader.domain.TtsPresynthUiState
+import com.andriod.reader.domain.TtsSpeechBackend
+import com.andriod.reader.service.TtsPlaybackManager
+import com.andriod.reader.service.synthesis.PresynthJobState
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Instant
 import javax.inject.Inject
 
@@ -68,19 +76,92 @@ data class NoteListUiState(
     val trashEntries: List<TrashEntryUi> = emptyList(),
     val lastTrashIdForUndo: String? = null,
     val undoTrashEvent: Long? = null,
+    val presynthJobs: Map<String, PresynthJobState> = emptyMap(),
+    val presynthSnackbar: String? = null,
+    val showPresynthActions: Boolean = false,
 )
 
 @HiltViewModel
 class NoteListViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val noteRepository: NoteRepository,
     private val syncRepository: SyncRepository,
+    private val settingsStore: SettingsStore,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(NoteListUiState())
     val uiState: StateFlow<NoteListUiState> = _uiState.asStateFlow()
 
+    private var lastPresynthStates: Map<String, TtsPresynthUiState> = emptyMap()
+
     init {
         refresh()
+        viewModelScope.launch {
+            TtsPlaybackManager.presynthJobs(context).collect { jobs ->
+                val snackbar = jobs.entries.firstNotNullOfOrNull { (fileName, job) ->
+                    val previous = lastPresynthStates[fileName]
+                    if (job.uiState == TtsPresynthUiState.Ready && previous == TtsPresynthUiState.Preparing) {
+                        "《${job.title}》语音已生成"
+                    } else {
+                        null
+                    }
+                }
+                lastPresynthStates = jobs.mapValues { it.value.uiState }
+                _uiState.update {
+                    it.copy(
+                        presynthJobs = jobs,
+                        presynthSnackbar = snackbar ?: it.presynthSnackbar,
+                    )
+                }
+                TtsPlaybackManager.refreshSession()
+            }
+        }
     }
+
+    fun clearPresynthSnackbar() {
+        _uiState.update { it.copy(presynthSnackbar = null) }
+    }
+
+    fun presynthJobFor(note: Note): PresynthJobState? {
+        _uiState.value.presynthJobs[note.fileName]?.let { return it }
+        if (!showPresynthActions()) return null
+        val plain = MarkdownPlainText.stripForSpeech(note.content)
+        if (plain.isBlank()) return null
+        return TtsPlaybackManager.presynthJobState(context, note.fileName, note.title, note.content)
+    }
+
+    fun onPresynthClick(note: Note) {
+        if (!showPresynthActions()) return
+        val job = presynthJobFor(note)
+        val state = job?.uiState ?: TtsPresynthUiState.NotPrepared
+        when (state) {
+            TtsPresynthUiState.Preparing -> TtsPlaybackManager.cancelPresynth(note.fileName)
+            TtsPresynthUiState.Ready -> TtsPlaybackManager.preparePresynth(
+                context = context,
+                fileName = note.fileName,
+                title = note.title,
+                content = note.content,
+                forceRegenerate = true,
+            )
+            TtsPresynthUiState.Stale,
+            TtsPresynthUiState.Failed,
+            TtsPresynthUiState.NotPrepared,
+            -> TtsPlaybackManager.preparePresynth(
+                context = context,
+                fileName = note.fileName,
+                title = note.title,
+                content = note.content,
+                forceRegenerate = state != TtsPresynthUiState.NotPrepared,
+            )
+            TtsPresynthUiState.Hidden -> Unit
+        }
+    }
+
+    fun showPresynthActions(): Boolean {
+        val backend = settingsStore.getTtsSpeechBackend()
+        return backend == TtsSpeechBackend.ONLINE_EDGE || backend == TtsSpeechBackend.OFFLINE_SHERPA
+    }
+
+    fun canPreparePresynth(): Boolean = TtsPlaybackManager.canPreparePresynth()
 
     fun refresh() {
         _uiState.update {
@@ -89,6 +170,7 @@ class NoteListViewModel @Inject constructor(
                 virtualFolders = noteRepository.listVirtualFolders(),
                 trashEntries = loadTrashEntries(),
                 message = null,
+                showPresynthActions = showPresynthActions(),
             )
         }
     }

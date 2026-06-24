@@ -13,6 +13,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.andriod.reader.domain.TtsPresynthUiState
+import com.andriod.reader.ui.tts.PresynthActionIcon
 
 private val SwipeActionButtonWidth = 52.dp
 
@@ -25,10 +27,16 @@ fun SwipeNoteRow(
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onAddToQueue: (() -> Unit)? = null,
+    onPresynth: (() -> Unit)? = null,
+    presynthState: TtsPresynthUiState = TtsPresynthUiState.Hidden,
+    presynthProgressFraction: Float? = null,
+    presynthEnabled: Boolean = true,
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit,
 ) {
-    val actionCount = if (onAddToQueue != null) 4 else 3
+    val presynthVisible = onPresynth != null && presynthState != TtsPresynthUiState.Hidden
+    val actionCount = (if (onAddToQueue != null) 1 else 0) +
+        (if (presynthVisible) 1 else 0) + 3
     val actionWidth = SwipeActionButtonWidth * actionCount
     SwipeRevealRow(
         isExpanded = isExpanded,
@@ -47,6 +55,19 @@ fun SwipeNoteRow(
                 ) {
                     Icon(Icons.Default.PlaylistAdd, contentDescription = "加入播放列表")
                 }
+            }
+            if (presynthVisible) {
+                PresynthActionIcon(
+                    state = presynthState,
+                    progressFraction = presynthProgressFraction,
+                    enabled = presynthEnabled,
+                    onClick = {
+                        onExpandedChange(false)
+                        onPresynth()
+                    },
+                    modifier = Modifier,
+                    contentDescription = "预生成语音",
+                )
             }
             IconButton(
                 onClick = {

@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.andriod.reader.service.TtsPlaybackMode
 import com.andriod.reader.service.TtsPlaybackSession
 
 @Composable
@@ -43,9 +44,24 @@ fun TtsMiniPlayerBar(
         0f
     }
     val subtitle = when {
+        session.presynthGenerating -> {
+            val base = when {
+                session.isPlaying && session.segmentTotal > 0 ->
+                    "段落 ${session.segmentIndex + 1} / ${session.segmentTotal}"
+                session.isPaused -> "已暂停"
+                else -> "正在朗读"
+            }
+            "$base · 生成中"
+        }
         session.isPlaying && session.segmentTotal > 0 ->
-            "段落 ${session.segmentIndex + 1} / ${session.segmentTotal}"
-        session.isPaused -> "已暂停"
+            buildString {
+                append("段落 ${session.segmentIndex + 1} / ${session.segmentTotal}")
+                session.playbackMode.displayLabel()?.let { append(" · $it") }
+            }
+        session.isPaused -> {
+            val mode = session.playbackMode.displayLabel()
+            if (mode != null) "已暂停 · $mode" else "已暂停"
+        }
         else -> "正在朗读"
     }
     val displaySubtitle = session.sleepTimerLabel?.takeIf { session.sleepTimerActive }?.let {
@@ -121,12 +137,19 @@ fun TtsMiniPlayerBar(
                     )
                 }
             }
-            if (session.segmentTotal > 0) {
-                LinearProgressIndicator(
-                    progress = { progress.coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth(),
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                )
+            if (session.segmentTotal > 0 || session.presynthGenerating) {
+                if (session.presynthGenerating && session.segmentTotal == 0) {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth(),
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        progress = { progress.coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(),
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    )
+                }
             }
         }
     }
