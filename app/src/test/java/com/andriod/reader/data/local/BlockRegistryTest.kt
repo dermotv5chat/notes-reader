@@ -28,11 +28,11 @@ class BlockRegistryTest {
     fun resolveCalloutIds_keepsIdsWhenOnlyTextChanges() {
         val fileName = "rules.md"
         val first = listOf(
-            CalloutKey(0, "habit", "11点睡觉", "> [!habit] 11点睡觉"),
+            CalloutKey(0, "habit", text = "11点睡觉", rawLine = "> [!habit] 11点睡觉"),
         )
         val ids1 = registry.resolveCalloutIds(fileName, first)
         val second = listOf(
-            CalloutKey(0, "habit", "11点睡觉，你没有晚睡的资本", "> [!habit] 11点睡觉，你没有晚睡的资本"),
+            CalloutKey(0, "habit", text = "11点睡觉，你没有晚睡的资本", rawLine = "> [!habit] 11点睡觉，你没有晚睡的资本"),
         )
         val ids2 = registry.resolveCalloutIds(fileName, second)
         assertEquals(ids1, ids2)
@@ -43,19 +43,19 @@ class BlockRegistryTest {
         val fileName = "rules.md"
         registry.resolveCalloutIds(
             fileName,
-            listOf(CalloutKey(0, "habit", "睡觉", "> [!habit] 睡觉")),
+            listOf(CalloutKey(0, "habit", text = "睡觉", rawLine = "> [!habit] 睡觉")),
         )
         val ids = registry.resolveCalloutIds(
             fileName,
             listOf(
-                CalloutKey(0, "habit", "睡觉", "> [!habit] 睡觉"),
-                CalloutKey(2, "rule", "别诉苦", "> [!rule] 别诉苦"),
+                CalloutKey(0, "habit", text = "睡觉", rawLine = "> [!habit] 睡觉"),
+                CalloutKey(2, "rule", text = "别诉苦", rawLine = "> [!rule] 别诉苦"),
             ),
         )
         assertEquals(2, ids.toSet().size)
         assertEquals(ids[0], registry.resolveCalloutIds(
             fileName,
-            listOf(CalloutKey(0, "habit", "睡觉", "> [!habit] 睡觉")),
+            listOf(CalloutKey(0, "habit", text = "睡觉", rawLine = "> [!habit] 睡觉")),
         ).single())
     }
 }

@@ -10,8 +10,10 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
 import com.andriod.reader.domain.PracticeEvent
+import com.andriod.reader.domain.PracticeMode
 import com.andriod.reader.domain.PracticeLogEntry
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -280,6 +282,8 @@ class PracticeSheetTest {
         composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_SECTION, useUnmergedTree = true)
             .performClick()
         composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_ITEM, useUnmergedTree = true)
+            .performScrollTo()
+        composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_ITEM, useUnmergedTree = true)
             .assertIsDisplayed()
         composeRule.onNodeWithText("熬夜").assertIsDisplayed()
     }
@@ -294,7 +298,7 @@ class PracticeSheetTest {
                         sheetState = PracticeSheetState(
                             blockId = "id1",
                             blockLabel = "测试准则",
-                            hasTodayEntry = true,
+                            hasPeriodEntry = true,
                         ),
                         onSave = { _, _ -> },
                         onClear = { cleared = true },
@@ -309,6 +313,7 @@ class PracticeSheetTest {
         composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_SECTION, useUnmergedTree = true)
             .performClick()
         composeRule.onNodeWithTag(PracticeSheetTestTags.CLEAR_TODAY_BUTTON, useUnmergedTree = true)
+            .performScrollTo()
             .performClick()
         composeRule.onNodeWithTag(PracticeSheetTestTags.CLEAR_CONFIRM_DIALOG, useUnmergedTree = true)
             .assertIsDisplayed()
@@ -321,5 +326,85 @@ class PracticeSheetTest {
         composeRule.onNodeWithTag(PracticeSheetTestTags.CLEAR_CONFIRM_BUTTON, useUnmergedTree = true)
             .performClick()
         assertEquals(true, cleared)
+    }
+
+    @Test
+    fun practiceSheetContent_whenMode_showsUnifiedRecordButtons() {
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme {
+                    PracticeSheetContent(
+                        sheetState = PracticeSheetState(
+                            blockId = "id1",
+                            blockLabel = "别诉苦",
+                            mode = PracticeMode.WHEN,
+                        ),
+                        onSave = { _, _ -> },
+                        onClear = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(PracticeSheetTestTags.FOLLOWED_BUTTON, useUnmergedTree = true)
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(PracticeSheetTestTags.VIOLATED_BUTTON, useUnmergedTree = true)
+            .assertIsDisplayed()
+        composeRule.onNodeWithText("遵守").assertIsDisplayed()
+        composeRule.onNodeWithText("违背").assertIsDisplayed()
+    }
+
+    @Test
+    fun practiceSheetContent_repeatlyDay_showsUnifiedLabels() {
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme {
+                    PracticeSheetContent(
+                        sheetState = PracticeSheetState(
+                            blockId = "id1",
+                            blockLabel = "11 点睡觉",
+                            mode = PracticeMode.REPEATLY,
+                        ),
+                        onSave = { _, _ -> },
+                        onClear = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("遵守").assertIsDisplayed()
+        composeRule.onNodeWithText("违背").assertIsDisplayed()
+    }
+
+    @Test
+    fun practiceSheetContent_historyCalendarTab() {
+        val recordedAt = Instant.parse("2026-06-20T14:30:00Z")
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme {
+                    PracticeSheetContent(
+                        sheetState = PracticeSheetState(
+                            blockId = "id1",
+                            blockLabel = "测试准则",
+                            history = listOf(
+                                PracticeLogEntry(
+                                    event = PracticeEvent.FOLLOWED,
+                                    recordedAt = recordedAt,
+                                ),
+                            ),
+                        ),
+                        onSave = { _, _ -> },
+                        onClear = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_SECTION, useUnmergedTree = true)
+            .performClick()
+        composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_TAB_CALENDAR, useUnmergedTree = true)
+            .performClick()
+        composeRule.onNodeWithTag(PracticeSheetTestTags.HISTORY_CALENDAR, useUnmergedTree = true)
+            .assertIsDisplayed()
     }
 }

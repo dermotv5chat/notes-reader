@@ -5,6 +5,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.andriod.reader.domain.GitHubSettings
 import com.andriod.reader.service.LastSleepTimerPreset
+import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.ui.theme.AppThemeMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -82,6 +83,24 @@ class SettingsStore @Inject constructor(
 
     fun getAppThemeMode(): AppThemeMode = readAppThemeMode()
 
+    fun getTtsSpeechBackend(): TtsSpeechBackend = runCatching {
+        TtsSpeechBackend.valueOf(
+            prefs.getString(KEY_TTS_SPEECH_BACKEND, TtsSpeechBackend.SYSTEM.name)
+                ?: TtsSpeechBackend.SYSTEM.name,
+        )
+    }.getOrDefault(TtsSpeechBackend.SYSTEM)
+
+    fun saveTtsSpeechBackend(backend: TtsSpeechBackend) {
+        prefs.edit().putString(KEY_TTS_SPEECH_BACKEND, backend.name).apply()
+    }
+
+    fun getEdgeTtsVoiceId(): String =
+        prefs.getString(KEY_EDGE_TTS_VOICE, DEFAULT_EDGE_TTS_VOICE) ?: DEFAULT_EDGE_TTS_VOICE
+
+    fun saveEdgeTtsVoiceId(voiceId: String) {
+        prefs.edit().putString(KEY_EDGE_TTS_VOICE, voiceId.trim()).apply()
+    }
+
     fun saveAppThemeMode(mode: AppThemeMode) {
         prefs.edit().putString(KEY_APP_THEME_MODE, mode.name).apply()
         _appThemeMode.value = mode
@@ -130,5 +149,8 @@ class SettingsStore @Inject constructor(
         private const val KEY_LOOP_PLAYBACK = "loop_playback"
         private const val KEY_LAST_SLEEP_TIMER_TYPE = "last_sleep_timer_type"
         private const val KEY_LAST_SLEEP_TIMER_MINUTES = "last_sleep_timer_minutes"
+        private const val KEY_TTS_SPEECH_BACKEND = "tts_speech_backend"
+        private const val KEY_EDGE_TTS_VOICE = "edge_tts_voice"
+        const val DEFAULT_EDGE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
     }
 }

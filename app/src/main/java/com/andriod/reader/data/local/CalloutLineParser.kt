@@ -7,9 +7,11 @@ object CalloutLineParser {
         val match = calloutRegex.find(rawLine.trim()) ?: return null
         val text = BlockIdResolver.stripBlockAnchor(match.groupValues[3].trim())
         if (text.isBlank()) return null
+        val modifiers = CalloutCadenceResolver.parseModifiers(match.groupValues[2])
         return CalloutKey(
             lineIndex = -1,
             variant = match.groupValues[1].lowercase(),
+            modifiers = modifiers,
             text = text,
             rawLine = rawLine,
         )

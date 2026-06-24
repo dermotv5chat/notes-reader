@@ -3,6 +3,8 @@ package com.andriod.reader.data.local
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.andriod.reader.domain.PracticeEvent
+import com.andriod.reader.domain.PracticeMode
+import com.andriod.reader.domain.RepeatPeriod
 import com.google.gson.Gson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -45,13 +47,19 @@ class PracticeLogStoreTest {
             recordedAt = instantOn(today, 22),
         )
 
-        val entry = store.getTodayEntry(fileName, blockId, today)
+        val entry = store.getPeriodStatusEntry(
+            fileName,
+            blockId,
+            PracticeMode.REPEATLY,
+            RepeatPeriod.DAY,
+            today,
+        )
         assertEquals(PracticeEvent.FOLLOWED, entry?.event)
         assertEquals("准时睡", entry?.note)
     }
 
     @Test
-    fun getTodayEntriesForNote_returnsLatestPerBlockForDate() {
+    fun getPeriodStatusEntriesForBlocks_returnsLatestPerBlockForPeriod() {
         store.appendEntry(
             fileName,
             blockId,
@@ -66,18 +74,39 @@ class PracticeLogStoreTest {
         )
         store.appendEntry(fileName, "other-id", PracticeEvent.VIOLATED, recordedAt = instantOn(today, 12))
 
-        val entries = store.getTodayEntriesForNote(fileName, today)
+        val entries = store.getPeriodStatusEntriesForBlocks(
+            fileName,
+            listOf(
+                PeriodBlockRef(blockId, PracticeMode.REPEATLY, RepeatPeriod.DAY),
+                PeriodBlockRef("other-id", PracticeMode.REPEATLY, RepeatPeriod.DAY),
+            ),
+            today,
+        )
         assertEquals(2, entries.size)
         assertEquals(PracticeEvent.VIOLATED, entries[blockId]?.event)
         assertEquals(PracticeEvent.VIOLATED, entries["other-id"]?.event)
     }
 
     @Test
-    fun clearTodayEntry_removesAllRecordsForToday() {
+    fun clearPeriodEntry_removesAllRecordsForCurrentDay() {
         store.appendEntry(fileName, blockId, PracticeEvent.VIOLATED, recordedAt = instantOn(today, 10))
         store.appendEntry(fileName, blockId, PracticeEvent.FOLLOWED, recordedAt = instantOn(today, 22))
-        store.clearTodayEntry(fileName, blockId, today)
-        assertNull(store.getTodayEntry(fileName, blockId, today))
+        store.clearPeriodEntry(
+            fileName,
+            blockId,
+            PracticeMode.REPEATLY,
+            RepeatPeriod.DAY,
+            today,
+        )
+        assertNull(
+            store.getPeriodStatusEntry(
+                fileName,
+                blockId,
+                PracticeMode.REPEATLY,
+                RepeatPeriod.DAY,
+                today,
+            ),
+        )
         assertTrue(store.getHistoryForBlock(fileName, blockId).isEmpty())
     }
 
@@ -126,8 +155,25 @@ class PracticeLogStoreTest {
             recordedAt = instantOn(today, 12),
         )
         store.migrateBlockId(fileName, "note.md#line:2", "note.md^b2")
-        assertNull(store.getTodayEntry(fileName, "note.md#line:2", today))
-        assertEquals(PracticeEvent.FOLLOWED, store.getTodayEntry(fileName, "note.md^b2", today)?.event)
+        assertNull(
+            store.getPeriodStatusEntry(
+                fileName,
+                "note.md#line:2",
+                PracticeMode.REPEATLY,
+                RepeatPeriod.DAY,
+                today,
+            ),
+        )
+        assertEquals(
+            PracticeEvent.FOLLOWED,
+            store.getPeriodStatusEntry(
+                fileName,
+                "note.md^b2",
+                PracticeMode.REPEATLY,
+                RepeatPeriod.DAY,
+                today,
+            )?.event,
+        )
     }
 
     @Test
@@ -156,7 +202,7 @@ class PracticeLogStoreTest {
     }
 
     @Test
-    fun getTodayEntry_ignoresCommentOnly() {
+    fun getPeriodStatusEntry_ignoresCommentOnly() {
         store.appendEntry(
             fileName,
             blockId,
@@ -164,12 +210,28 @@ class PracticeLogStoreTest {
             note = "今天想法",
             recordedAt = instantOn(today, 10),
         )
-        assertNull(store.getTodayEntry(fileName, blockId, today))
-        assertTrue(store.hasAnyEntryOnDate(fileName, blockId, today))
+        assertNull(
+            store.getPeriodStatusEntry(
+                fileName,
+                blockId,
+                PracticeMode.REPEATLY,
+                RepeatPeriod.DAY,
+                today,
+            ),
+        )
+        assertTrue(
+            store.hasAnyEntryInPeriod(
+                fileName,
+                blockId,
+                PracticeMode.REPEATLY,
+                RepeatPeriod.DAY,
+                today,
+            ),
+        )
     }
 
     @Test
-    fun getTodayEntry_usesLatestStatusWhenCommentIsNewer() {
+    fun getPeriodStatusEntry_usesLatestStatusWhenCommentIsNewer() {
         store.appendEntry(
             fileName,
             blockId,
@@ -183,6 +245,48 @@ class PracticeLogStoreTest {
             note = "补充想法",
             recordedAt = instantOn(today, 12),
         )
-        assertEquals(PracticeEvent.FOLLOWED, store.getTodayEntry(fileName, blockId, today)?.event)
+        assertEquals(
+            PracticeEvent.FOLLOWED,
+            store.getPeriodStatusEntry(
+                fileName,
+                blockId,
+                PracticeMode.REPEATLY,
+                RepeatPeriod.DAY,
+                today,
+            )?.event,
+        )
+    }
+
+    @Test
+    fun legacyPartialEvent_isMigratedToFollowedForStatus() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val logFile = context.filesDir.resolve(".meta/practice-logs.json")
+        logFile.parentFile?.mkdirs()
+        logFile.writeText(
+            """
+            {
+              "$fileName": {
+                "$blockId": [
+                  {
+                    "event": "PARTIAL",
+                    "note": "",
+                    "recordedAt": "${instantOn(today, 9)}"
+                  }
+                ]
+              }
+            }
+            """.trimIndent(),
+        )
+        val migratedStore = PracticeLogStore(context, Gson())
+        assertEquals(
+            PracticeEvent.FOLLOWED,
+            migratedStore.getPeriodStatusEntry(
+                fileName,
+                blockId,
+                PracticeMode.REPEATLY,
+                RepeatPeriod.DAY,
+                today,
+            )?.event,
+        )
     }
 }

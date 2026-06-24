@@ -6,17 +6,22 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.data.repository.NoteRepository
+import com.andriod.reader.data.repository.BlockPracticeDisplayMeta
 import com.andriod.reader.data.repository.PracticeRepository
 import com.andriod.reader.domain.Note
 import com.andriod.reader.domain.NoteBlock
+import com.andriod.reader.domain.PracticeMode
+import com.andriod.reader.domain.RepeatPeriod
 import com.andriod.reader.domain.PracticeDayEntry
 import com.andriod.reader.domain.PracticeEvent
+import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
 import com.andriod.reader.service.LastSleepTimerPreset
 import com.andriod.reader.service.SleepTimerPresetPolicy
 import com.andriod.reader.service.SleepTimerMode
 import com.andriod.reader.service.TtsHelper
+import com.andriod.reader.service.TtsVoiceQuality
 import com.andriod.reader.service.TtsPlaybackManager
 import com.andriod.reader.service.TtsPlaybackSession
 import com.andriod.reader.ui.NavArgs
@@ -43,6 +48,8 @@ data class ReaderUiState(
     val selectedVoiceId: String? = null,
     val voicePreference: TtsVoicePreference = TtsVoicePreference.AUTO,
     val voicePickerExpanded: Boolean = false,
+    val speechBackend: TtsSpeechBackend = TtsSpeechBackend.SYSTEM,
+    val ttsQualityHint: String? = null,
     val isTtsReady: Boolean = false,
     val isTtsInitializing: Boolean = false,
     val ttsError: String? = null,
@@ -60,6 +67,7 @@ data class ReaderUiState(
     val notificationPermissionDenied: Boolean = false,
     val blocks: List<NoteBlock> = emptyList(),
     val todayPractice: Map<String, PracticeDayEntry> = emptyMap(),
+    val practiceMeta: Map<String, BlockPracticeDisplayMeta> = emptyMap(),
     val practiceSheet: PracticeSheetState? = null,
 )
 
@@ -199,10 +207,27 @@ class ReaderViewModel @Inject constructor(
 
     private fun refreshVoiceOptions(tts: com.andriod.reader.service.TtsController) {
         val options = tts.listVoiceOptions()
-        val activeId = tts.diagnostics().voiceName?.takeIf { id -> options.any { it.id == id } }
-            ?: _uiState.value.selectedVoiceId
+        val backend = tts.speechBackend()
+        val activeId = when (backend) {
+            TtsSpeechBackend.ONLINE_EDGE -> settingsStore.getEdgeTtsVoiceId()
+            TtsSpeechBackend.SYSTEM ->
+                tts.diagnostics().voiceName?.takeIf { id -> options.any { it.id == id } }
+                    ?: _uiState.value.selectedVoiceId
+        }
+        val diag = tts.diagnostics()
+        val tier = tts.voiceQualityTier()
+        val hint = if (TtsVoiceQuality.needsQualityHint(tier)) {
+            TtsVoiceQuality.qualityGuide(tier, diag.googleTtsInstalled)
+        } else {
+            null
+        }
         _uiState.update {
-            it.copy(voiceOptions = options, selectedVoiceId = activeId)
+            it.copy(
+                voiceOptions = options,
+                selectedVoiceId = activeId,
+                speechBackend = backend,
+                ttsQualityHint = hint,
+            )
         }
     }
 
@@ -308,6 +333,26 @@ class ReaderViewModel @Inject constructor(
         controller?.applyVoicePreference(preference)
         controller?.let { refreshVoiceOptions(it) }
         _uiState.update { it.copy(voicePreference = preference) }
+    }
+
+    fun onSpeechBackendChange(backend: TtsSpeechBackend) {
+        viewModelScope.launch {
+            settingsStore.saveTtsSpeechBackend(backend)
+            controller?.applySpeechBackend(backend)
+            val wasPlaying = TtsPlaybackManager.session.value.hasActiveSession
+            TtsPlaybackManager.reinitialize(context)
+            val tts = TtsPlaybackManager.awaitReady(context)
+            controller = tts
+            tts.setSpeechRate(_uiState.value.speechRate)
+            tts.setPitch(_uiState.value.speechPitch)
+            refreshVoiceOptions(tts)
+            _uiState.update {
+                it.copy(
+                    speechBackend = backend,
+                    ttsError = if (wasPlaying) "已切换朗读引擎（已停止当前朗读）" else it.ttsError,
+                )
+            }
+        }
     }
 
     fun refreshNotificationPermissionState() {
@@ -441,11 +486,13 @@ class ReaderViewModel @Inject constructor(
 
     fun refreshNote() {
         val refreshed = noteRepository.getNote(fileName) ?: return
+        val blocks = practiceRepository.parseBlocks(refreshed.content, refreshed.fileName)
         _uiState.update { current ->
             current.copy(
                 note = refreshed,
-                blocks = practiceRepository.parseBlocks(refreshed.content, refreshed.fileName),
-                todayPractice = practiceRepository.getTodayEntriesForNote(refreshed.fileName),
+                blocks = blocks,
+                todayPractice = practiceRepository.getPeriodEntriesForBlocks(refreshed.fileName, blocks),
+                practiceMeta = practiceRepository.getDisplayMetaForBlocks(refreshed.fileName, blocks),
             )
         }
     }
@@ -453,14 +500,24 @@ class ReaderViewModel @Inject constructor(
     fun onTrackableBlockClick(block: NoteBlock) {
         if (!block.trackable) return
         val note = _uiState.value.note ?: return
+        val callout = block as? NoteBlock.Callout
         val history = practiceRepository.getBlockHistory(note.fileName, block.id)
-        val hasTodayEntry = practiceRepository.hasAnyEntryOnDate(note.fileName, block.id)
+        val hasPeriodEntry = callout?.let {
+            practiceRepository.hasAnyEntryInPeriod(
+                note.fileName,
+                block.id,
+                it.mode,
+                it.repeatPeriod,
+            )
+        } ?: false
         _uiState.update {
             it.copy(
                 practiceSheet = PracticeSheetState(
                     blockId = block.id,
                     blockLabel = block.displayLabel(),
-                    hasTodayEntry = hasTodayEntry,
+                    mode = callout?.mode ?: PracticeMode.REPEATLY,
+                    repeatPeriod = callout?.repeatPeriod ?: RepeatPeriod.DAY,
+                    hasPeriodEntry = hasPeriodEntry,
                     history = history,
                 ),
             )
@@ -483,7 +540,8 @@ class ReaderViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 practiceSheet = null,
-                todayPractice = practiceRepository.getTodayEntriesForNote(file),
+                todayPractice = practiceRepository.getPeriodEntriesForBlocks(file, it.blocks),
+                practiceMeta = practiceRepository.getDisplayMetaForBlocks(file, it.blocks),
             )
         }
     }
@@ -491,11 +549,17 @@ class ReaderViewModel @Inject constructor(
     fun clearPracticeToday() {
         val sheet = _uiState.value.practiceSheet ?: return
         val file = _uiState.value.note?.fileName ?: return
-        practiceRepository.clearTodayEntry(file, sheet.blockId)
+        practiceRepository.clearPeriodEntry(
+            fileName = file,
+            blockId = sheet.blockId,
+            mode = sheet.mode,
+            repeatPeriod = sheet.repeatPeriod,
+        )
         _uiState.update {
             it.copy(
                 practiceSheet = null,
-                todayPractice = practiceRepository.getTodayEntriesForNote(file),
+                todayPractice = practiceRepository.getPeriodEntriesForBlocks(file, it.blocks),
+                practiceMeta = practiceRepository.getDisplayMetaForBlocks(file, it.blocks),
             )
         }
     }
@@ -503,16 +567,23 @@ class ReaderViewModel @Inject constructor(
     private fun loadInitialState(): ReaderUiState {
         val note = noteRepository.getNote(fileName)
         val blocks = note?.let { practiceRepository.parseBlocks(it.content, it.fileName) }.orEmpty()
-        val todayPractice = note?.let { practiceRepository.getTodayEntriesForNote(it.fileName) }.orEmpty()
+        val todayPractice = note?.let {
+            practiceRepository.getPeriodEntriesForBlocks(it.fileName, blocks)
+        }.orEmpty()
+        val practiceMeta = note?.let {
+            practiceRepository.getDisplayMetaForBlocks(it.fileName, blocks)
+        }.orEmpty()
         return ReaderUiState(
             note = note,
             blocks = blocks,
             todayPractice = todayPractice,
+            practiceMeta = practiceMeta,
             speechRate = settingsStore.getDefaultSpeechRate(),
             speechPitch = settingsStore.getDefaultSpeechPitch(),
             keepScreenOn = settingsStore.isKeepScreenOn(),
             selectedVoiceId = settingsStore.getSelectedVoiceId(),
             voicePreference = readVoicePreference(),
+            speechBackend = settingsStore.getTtsSpeechBackend(),
             loopEnabled = settingsStore.isLoopPlaybackEnabled(),
             lastSleepTimerPresetSubtitle = settingsStore.getLastSleepTimerPreset().displaySubtitle(),
         )

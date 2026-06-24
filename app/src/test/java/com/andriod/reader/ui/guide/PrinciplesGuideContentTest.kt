@@ -13,6 +13,7 @@ class PrinciplesGuideContentTest {
         assertTrue(titles.contains("[!rule] 与 [!habit]"))
         assertTrue(titles.contains("一行一条准则"))
         assertTrue(titles.contains("隐式块 ID"))
+        assertTrue(titles.contains("践行弹窗"))
         assertTrue(titles.contains("历史记录"))
     }
 

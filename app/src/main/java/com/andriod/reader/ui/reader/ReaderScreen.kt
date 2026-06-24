@@ -79,6 +79,7 @@ fun ReaderScreen(
     ReaderTtsSettingsSheet(
         uiState = uiState,
         onDismiss = viewModel::closeTtsSettings,
+        onSpeechBackendChange = viewModel::onSpeechBackendChange,
         onVoicePreferenceChange = viewModel::onVoicePreferenceChange,
         onVoicePickerExpandedChange = viewModel::onVoicePickerExpandedChange,
         onVoiceSelected = viewModel::onVoiceSelected,
@@ -156,6 +157,7 @@ fun ReaderScreen(
             BlockReaderContent(
                 blocks = uiState.blocks,
                 todayPractice = uiState.todayPractice,
+                practiceMeta = uiState.practiceMeta,
                 onTrackableBlockClick = viewModel::onTrackableBlockClick,
                 modifier = Modifier
                     .fillMaxSize()

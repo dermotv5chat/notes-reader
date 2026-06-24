@@ -41,6 +41,8 @@ sealed class NoteBlock {
         override val rawLine: String,
         val variant: String,
         val text: String,
+        val mode: PracticeMode = PracticeMode.WHEN,
+        val repeatPeriod: RepeatPeriod = RepeatPeriod.DAY,
     ) : NoteBlock() {
         override val trackable: Boolean = true
     }

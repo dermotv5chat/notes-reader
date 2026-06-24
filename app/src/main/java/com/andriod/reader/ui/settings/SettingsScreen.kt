@@ -36,6 +36,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.andriod.reader.ui.theme.AppThemeMode
+import com.andriod.reader.ui.tts.TtsVoiceSettingsSection
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -150,13 +151,31 @@ fun SettingsScreen(
             Text("语音朗读", modifier = Modifier.padding(top = 24.dp, bottom = 8.dp))
             Text("当前引擎：${uiState.ttsEngine.ifBlank { "检测中…" }}")
             Text(
-                "朗读语音和语速请在笔记阅读页调整。",
+                uiState.ttsVoice.ifBlank { "检测中…" },
                 modifier = Modifier.padding(top = 4.dp),
             )
             Text(
                 uiState.ttsRecommendation,
                 modifier = Modifier.padding(top = 8.dp),
             )
+            TtsVoiceSettingsSection(
+                voiceOptions = uiState.voiceOptions,
+                selectedVoiceId = uiState.selectedVoiceId,
+                voicePreference = uiState.voicePreference,
+                speechBackend = uiState.speechBackend,
+                qualityGuide = uiState.qualityGuide,
+                onVoicePreferenceChange = viewModel::onVoicePreferenceChange,
+                onVoicePickerExpandedChange = viewModel::onVoicePickerExpandedChange,
+                onVoiceSelected = viewModel::onVoiceSelected,
+                onSpeechBackendChange = viewModel::onSpeechBackendChange,
+                voicePickerExpanded = uiState.voicePickerExpanded,
+            )
+            OutlinedButton(
+                onClick = viewModel::previewTts,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            ) {
+                Text("试听当前语音")
+            }
             Text("默认语速 ${"%.1f".format(uiState.speechRate)}x（阅读页可临时调整）")
             Slider(
                 value = uiState.speechRate,

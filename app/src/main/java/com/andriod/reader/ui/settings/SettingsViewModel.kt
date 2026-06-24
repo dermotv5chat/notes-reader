@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.data.repository.SyncRepository
 import com.andriod.reader.domain.GitHubSettings
+import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
 import com.andriod.reader.service.TtsHelper
+import com.andriod.reader.service.TtsVoiceQuality
 import com.andriod.reader.service.TtsPlaybackManager
 import com.andriod.reader.ui.theme.AppThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -39,6 +41,8 @@ data class SettingsUiState(
     val voiceOptions: List<TtsVoiceOption> = emptyList(),
     val selectedVoiceId: String? = null,
     val voicePreference: TtsVoicePreference = TtsVoicePreference.AUTO,
+    val speechBackend: TtsSpeechBackend = TtsSpeechBackend.SYSTEM,
+    val qualityGuide: String? = null,
     val voicePickerExpanded: Boolean = false,
 )
 
@@ -74,6 +78,7 @@ class SettingsViewModel @Inject constructor(
             themeMode = settingsStore.getAppThemeMode(),
             selectedVoiceId = settingsStore.getSelectedVoiceId(),
             voicePreference = preference,
+            speechBackend = settingsStore.getTtsSpeechBackend(),
         )
     }
 
@@ -109,6 +114,26 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun onSpeechBackendChange(backend: TtsSpeechBackend) {
+        viewModelScope.launch {
+            settingsStore.saveTtsSpeechBackend(backend)
+            TtsPlaybackManager.getOrNull()?.applySpeechBackend(backend)
+            val wasPlaying = TtsPlaybackManager.session.value.hasActiveSession
+            TtsPlaybackManager.reinitialize(ttsContext())
+            val controller = TtsPlaybackManager.awaitReady(ttsContext())
+            controller.setSpeechRate(_uiState.value.speechRate)
+            controller.setPitch(_uiState.value.speechPitch)
+            updateDiagnostics(controller)
+            _uiState.update {
+                it.copy(
+                    speechBackend = backend,
+                    saved = false,
+                    testMessage = if (wasPlaying) "已切换朗读引擎（已停止当前朗读）" else it.testMessage,
+                )
+            }
+        }
+    }
+
     fun onVoicePreferenceChange(preference: TtsVoicePreference) {
         viewModelScope.launch {
             settingsStore.saveVoicePreference(preference.name)
@@ -131,8 +156,10 @@ class SettingsViewModel @Inject constructor(
         settingsStore.saveDefaultSpeechPitch(state.speechPitch)
         settingsStore.setKeepScreenOn(state.keepScreenOn)
         settingsStore.saveVoicePreference(state.voicePreference.name)
+        settingsStore.saveTtsSpeechBackend(state.speechBackend)
         state.selectedVoiceId?.let { settingsStore.saveSelectedVoiceId(it) }
         TtsPlaybackManager.getOrNull()?.apply {
+            applySpeechBackend(state.speechBackend)
             setSpeechRate(state.speechRate)
             setPitch(state.speechPitch)
             applyVoicePreference(state.voicePreference)
@@ -188,9 +215,13 @@ class SettingsViewModel @Inject constructor(
     private fun updateDiagnostics(controller: com.andriod.reader.service.TtsController) {
         val diag = controller.diagnostics()
         val options = controller.listVoiceOptions()
-        val activeVoiceId = diag.voiceName?.takeIf { name ->
-            options.any { it.id == name }
-        } ?: _uiState.value.selectedVoiceId
+        val backend = controller.speechBackend()
+        val activeVoiceId = when (backend) {
+            TtsSpeechBackend.ONLINE_EDGE -> settingsStore.getEdgeTtsVoiceId()
+            TtsSpeechBackend.SYSTEM -> diag.voiceName?.takeIf { name ->
+                options.any { it.id == name }
+            } ?: _uiState.value.selectedVoiceId
+        }
         val selectedLabel = options.find { it.id == activeVoiceId }?.label ?: diag.voiceName
         val voiceLabel = buildString {
             if (diag.chineseVoiceCount > 0) {
@@ -200,14 +231,18 @@ class SettingsViewModel @Inject constructor(
                 append(selectedLabel ?: "未识别")
             }
         }
+        val tier = controller.voiceQualityTier()
+        val guide = TtsVoiceQuality.qualityGuide(tier, diag.googleTtsInstalled)
         _uiState.update {
             it.copy(
                 ttsEngine = diag.engineLabel,
                 ttsVoice = voiceLabel,
                 ttsVoiceCount = diag.chineseVoiceCount,
                 ttsRecommendation = diag.recommendation,
+                qualityGuide = if (TtsVoiceQuality.needsQualityHint(tier)) guide else null,
                 voiceOptions = options,
                 selectedVoiceId = activeVoiceId,
+                speechBackend = backend,
             )
         }
     }

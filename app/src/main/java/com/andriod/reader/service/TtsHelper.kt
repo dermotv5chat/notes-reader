@@ -252,7 +252,9 @@ object TtsHelper {
                 if (voice.isNetworkConnectionRequired) score += 1_500
             }
             TtsVoicePreference.AUTO -> {
-                if (!voice.isNetworkConnectionRequired) score += 600
+                if (!voice.isNetworkConnectionRequired) score += 400
+                if (voice.name.contains("neural", ignoreCase = true)) score += 900
+                if (voice.isNetworkConnectionRequired) score += 700
             }
         }
         return score
@@ -292,22 +294,32 @@ object TtsHelper {
         setup: VoiceSetup,
         preference: TtsVoicePreference,
     ): String {
+        val diag = TtsDiagnostics(
+            enginePackage = "",
+            engineLabel = "",
+            voiceName = setup.voice?.name,
+            voiceLocale = setup.voice?.locale?.toLanguageTag(),
+            voiceQuality = setup.voice?.quality,
+            chineseVoiceCount = setup.chineseVoiceCount,
+            isGoogleEngine = isGoogleEngine,
+            googleTtsInstalled = googleInstalled,
+            isLanguageFallback = setup.languageFallback && setup.voice == null,
+            isOnlineVoice = setup.voice?.isNetworkConnectionRequired == true,
+            recommendation = "",
+        )
+        val tier = TtsVoiceQuality.assess(diag)
+        val qualityHint = TtsVoiceQuality.qualityGuide(tier, googleInstalled)
         return when {
             setup.chineseVoiceCount > 0 && setup.voice != null ->
-                buildString {
-                    append("已识别 ${setup.chineseVoiceCount} 个中文语音，可在阅读页选择。")
-                    if (setup.voice.isNetworkConnectionRequired) {
-                        append("当前为在线语音，需联网。")
-                    }
-                }
+                "已识别 ${setup.chineseVoiceCount} 个中文语音。$qualityHint"
             setup.chineseVoiceCount > 0 ->
-                "已识别 ${setup.chineseVoiceCount} 个中文语音，请在阅读页手动选择。"
+                "已识别 ${setup.chineseVoiceCount} 个中文语音，请在阅读页或下方选择具体音色。$qualityHint"
             setup.languageFallback ->
-                "将使用系统默认中文语音朗读。"
+                "将使用系统默认中文语音（可能偏机械）。$qualityHint"
             googleInstalled && isGoogleEngine ->
-                "使用 Google 引擎。若效果不好，可在系统设置换成本机自带引擎。"
+                "使用 Google 引擎。$qualityHint"
             else ->
-                "使用系统自带语音引擎。若无法朗读，请到系统「文字转语音输出」试听并确认中文可用。"
+                "使用系统自带引擎。$qualityHint"
         }
     }
 }

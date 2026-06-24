@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,17 +21,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,11 +48,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import com.andriod.reader.data.repository.BlockPracticeDisplayMeta
 import com.andriod.reader.domain.NoteBlock
+import com.andriod.reader.domain.PracticeMode
 import com.andriod.reader.domain.PracticeDayEntry
 import com.andriod.reader.domain.PracticeEvent
 import com.andriod.reader.domain.PracticeLogEntry
+import com.andriod.reader.domain.PracticePeriod
+import com.andriod.reader.domain.RepeatPeriod
+import com.andriod.reader.domain.isStatusEvent
 import com.andriod.reader.domain.shouldDisplayInReader
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -55,6 +66,7 @@ import java.time.format.DateTimeFormatter
 fun BlockReaderContent(
     blocks: List<NoteBlock>,
     todayPractice: Map<String, PracticeDayEntry>,
+    practiceMeta: Map<String, BlockPracticeDisplayMeta>,
     onTrackableBlockClick: (NoteBlock) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -73,6 +85,7 @@ fun BlockReaderContent(
             NoteBlockRow(
                 block = block,
                 todayEntry = todayPractice[block.id],
+                displayMeta = practiceMeta[block.id],
                 onClick = {
                     if (block.trackable) {
                         onTrackableBlockClick(block)
@@ -87,23 +100,24 @@ fun BlockReaderContent(
 private fun NoteBlockRow(
     block: NoteBlock,
     todayEntry: PracticeDayEntry?,
+    displayMeta: BlockPracticeDisplayMeta?,
     onClick: () -> Unit,
 ) {
+    val callout = block as? NoteBlock.Callout
+    val mode = callout?.mode ?: PracticeMode.REPEATLY
+    val repeatPeriod = callout?.repeatPeriod ?: RepeatPeriod.DAY
     val clickable = block.trackable
     val cardStyle = block.trackable
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(IntrinsicSize.Min)
             .then(
                 if (cardStyle) {
                     Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .background(
-                            when (block) {
-                                is NoteBlock.Callout ->
-                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)
-                                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                            },
+                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
                         )
                 } else {
                     Modifier
@@ -122,6 +136,9 @@ private fun NoteBlockRow(
             ),
         verticalAlignment = Alignment.Top,
     ) {
+        if (block.trackable && displayMeta != null) {
+            PracticeMaturityBar(tier = displayMeta.maturityTier)
+        }
         Column(modifier = Modifier.weight(1f)) {
             when (block) {
                 is NoteBlock.Heading -> {
@@ -171,21 +188,58 @@ private fun NoteBlockRow(
             }
         }
         if (block.trackable) {
-            PracticeStatusDot(todayEntry = todayEntry)
+            PracticeBlockIndicator(
+                mode = mode,
+                periodEntry = todayEntry,
+                lastStatusDate = displayMeta?.lastStatusDate,
+            )
         }
     }
 }
 
 @Composable
-private fun PracticeStatusDot(todayEntry: PracticeDayEntry?) {
-    val color = when (todayEntry?.event) {
+private fun PracticeBlockIndicator(
+    mode: PracticeMode,
+    periodEntry: PracticeDayEntry?,
+    lastStatusDate: LocalDate?,
+) {
+    Column(
+        horizontalAlignment = Alignment.End,
+        modifier = Modifier.padding(start = 8.dp, top = 4.dp),
+    ) {
+        val showIdleDot = mode == PracticeMode.REPEATLY
+        if (showIdleDot || (periodEntry != null && periodEntry.event.isStatusEvent())) {
+            PracticeStatusDot(
+                periodEntry = periodEntry,
+                showWhenEmpty = showIdleDot,
+            )
+        }
+        if (mode == PracticeMode.WHEN) {
+            lastStatusDate?.let { date ->
+                Text(
+                    text = "上次 ${date.monthValue}/${date.dayOfMonth}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag(PracticeSheetTestTags.LAST_STATUS_DATE),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PracticeStatusDot(
+    periodEntry: PracticeDayEntry?,
+    showWhenEmpty: Boolean,
+) {
+    if (periodEntry == null && !showWhenEmpty) return
+    val color = when (periodEntry?.event) {
         PracticeEvent.FOLLOWED -> MaterialTheme.colorScheme.primary
         PracticeEvent.VIOLATED -> MaterialTheme.colorScheme.error
         PracticeEvent.COMMENT, null -> MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
     }
     Box(
         modifier = Modifier
-            .padding(start = 8.dp, top = 6.dp)
             .size(10.dp)
             .clip(CircleShape)
             .background(color),
@@ -195,7 +249,9 @@ private fun PracticeStatusDot(todayEntry: PracticeDayEntry?) {
 data class PracticeSheetState(
     val blockId: String,
     val blockLabel: String,
-    val hasTodayEntry: Boolean = false,
+    val mode: PracticeMode = PracticeMode.REPEATLY,
+    val repeatPeriod: RepeatPeriod = RepeatPeriod.DAY,
+    val hasPeriodEntry: Boolean = false,
     val history: List<PracticeLogEntry> = emptyList(),
 )
 
@@ -237,6 +293,12 @@ internal fun PracticeSheetContent(
     var historyExpanded by remember(sheetState.blockId) {
         mutableStateOf(false)
     }
+    var historyTab by remember(sheetState.blockId) {
+        mutableIntStateOf(0)
+    }
+    var selectedDayEntries by remember(sheetState.blockId) {
+        mutableStateOf<List<PracticeLogEntry>?>(null)
+    }
 
     pendingNoteEvent?.let { event ->
         PracticeNoteDialog(
@@ -249,17 +311,36 @@ internal fun PracticeSheetContent(
         )
     }
 
+    selectedDayEntries?.let { entries ->
+        AlertDialog(
+            onDismissRequest = { selectedDayEntries = null },
+            title = { Text("当日记录") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    entries.forEach { entry ->
+                        PracticeHistoryRow(entry = entry)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedDayEntries = null }) {
+                    Text("关闭")
+                }
+            },
+        )
+    }
+
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
             title = {
                 Text(
-                    text = "清除今日记录？",
+                    text = PracticePeriod.clearConfirmTitle(sheetState.repeatPeriod),
                     modifier = Modifier.testTag(PracticeSheetTestTags.CLEAR_CONFIRM_DIALOG),
                 )
             },
             text = {
-                Text("将删除该准则今天的全部践行记录，此操作不可恢复。")
+                Text(PracticePeriod.clearConfirmBody(sheetState.repeatPeriod))
             },
             confirmButton = {
                 TextButton(
@@ -289,7 +370,7 @@ internal fun PracticeSheetContent(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
-            text = "今日践行",
+            text = PracticeSheetLabels.sheetTitle(sheetState.mode, sheetState.repeatPeriod),
             style = MaterialTheme.typography.titleMedium,
         )
         Text(
@@ -303,7 +384,7 @@ internal fun PracticeSheetContent(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             PracticeActionButton(
-                label = "遵守",
+                label = PracticeSheetLabels.followedLabel(),
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 onQuickTap = { onSave(PracticeEvent.FOLLOWED, "") },
@@ -312,7 +393,7 @@ internal fun PracticeSheetContent(
                 testTag = PracticeSheetTestTags.FOLLOWED_BUTTON,
             )
             PracticeActionButton(
-                label = "违背",
+                label = PracticeSheetLabels.violatedLabel(),
                 containerColor = MaterialTheme.colorScheme.error,
                 contentColor = MaterialTheme.colorScheme.onError,
                 onQuickTap = { onSave(PracticeEvent.VIOLATED, "") },
@@ -360,33 +441,59 @@ internal fun PracticeSheetContent(
             }
 
             if (historyExpanded) {
+                TabRow(selectedTabIndex = historyTab) {
+                    Tab(
+                        selected = historyTab == 0,
+                        onClick = { historyTab = 0 },
+                        text = { Text("列表") },
+                        modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_TAB_LIST),
+                    )
+                    Tab(
+                        selected = historyTab == 1,
+                        onClick = { historyTab = 1 },
+                        text = { Text("月历") },
+                        modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_TAB_CALENDAR),
+                    )
+                }
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp),
+                        .padding(top = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    if (sheetState.history.isEmpty()) {
-                        Text(
-                            text = "暂无记录",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_EMPTY),
-                        )
-                    } else {
-                        sheetState.history.forEachIndexed { index, entry ->
-                            PracticeHistoryRow(
-                                entry = entry,
-                                modifier = if (index == 0) {
-                                    Modifier.testTag(PracticeSheetTestTags.HISTORY_ITEM)
-                                } else {
-                                    Modifier
-                                },
+                    when (historyTab) {
+                        0 -> {
+                            if (sheetState.history.isEmpty()) {
+                                Text(
+                                    text = "暂无记录",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.testTag(PracticeSheetTestTags.HISTORY_EMPTY),
+                                )
+                            } else {
+                                sheetState.history.forEachIndexed { index, entry ->
+                                    PracticeHistoryRow(
+                                        entry = entry,
+                                        modifier = if (index == 0) {
+                                            Modifier.testTag(PracticeSheetTestTags.HISTORY_ITEM)
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        1 -> {
+                            PracticeHistoryCalendar(
+                                history = sheetState.history,
+                                mode = sheetState.mode,
+                                onDaySelected = { _, entries -> selectedDayEntries = entries },
                             )
                         }
                     }
 
-                    if (sheetState.hasTodayEntry) {
+                    if (sheetState.hasPeriodEntry) {
                         HorizontalDivider(
                             modifier = Modifier.padding(top = 4.dp),
                             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
@@ -398,7 +505,7 @@ internal fun PracticeSheetContent(
                                 .testTag(PracticeSheetTestTags.CLEAR_TODAY_BUTTON),
                         ) {
                             Text(
-                                text = "清除今日记录",
+                                text = PracticePeriod.clearLabel(sheetState.repeatPeriod),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
                             )

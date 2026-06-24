@@ -24,8 +24,11 @@ import com.andriod.reader.MainActivity
 import com.andriod.reader.R
 import com.andriod.reader.data.local.MarkdownPlainText
 import com.andriod.reader.data.remote.SettingsStore
+import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
+import com.andriod.reader.service.edge.EdgeTtsVoices
+import com.andriod.reader.service.edge.NetworkAvailability
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -93,6 +96,29 @@ class TtsController(
     private var awaitingInitAttemptId = 0
     private var currentFileName: String? = null
     private var currentTitle: String? = null
+    private var onlineBackend: OnlineEdgeSpeechBackend? = null
+    private var onlineActive = false
+
+    private fun ensureOnlineBackend(): OnlineEdgeSpeechBackend {
+        if (onlineBackend == null) {
+            onlineBackend = OnlineEdgeSpeechBackend(appContext, settingsStore)
+        }
+        return onlineBackend!!
+    }
+
+    private fun wantsOnlineBackend(): Boolean =
+        settingsStore.getTtsSpeechBackend() == TtsSpeechBackend.ONLINE_EDGE
+
+    private fun refreshOnlineAvailability(): Boolean {
+        if (!wantsOnlineBackend()) {
+            onlineActive = false
+            return false
+        }
+        onlineActive = NetworkAvailability.isConnected(appContext)
+        return onlineActive
+    }
+
+    private fun shouldUseOnline(): Boolean = wantsOnlineBackend() && refreshOnlineAvailability()
 
     fun init() {
         // Actual engine startup happens in awaitReady() on the main thread.
@@ -122,24 +148,7 @@ class TtsController(
                 override fun onStart(utteranceId: String?) = Unit
 
                 override fun onDone(utteranceId: String?) {
-                    if (!isPlaying.get() || isPaused.get()) return
-                    if (currentIndex < segments.lastIndex) {
-                        currentIndex++
-                        onSegmentChanged(currentIndex, segments.size)
-                        notifySessionChanged()
-                        speakCurrent()
-                    } else if (TtsPlaybackEndAction.shouldContinueAfterLastSegment(
-                            loopEnabled,
-                            sleepTimerStateProvider(),
-                        )
-                    ) {
-                        currentIndex = 0
-                        onSegmentChanged(currentIndex, segments.size)
-                        notifySessionChanged()
-                        speakCurrent()
-                    } else {
-                        stop()
-                    }
+                    handleSegmentFinished()
                 }
 
                 @Deprecated("Deprecated in Java")
@@ -170,7 +179,7 @@ class TtsController(
 
     fun attemptedEngineLabels(): List<String> = attemptedEngines.toList()
 
-    fun isReady(): Boolean = ready
+    fun isReady(): Boolean = ready || (wantsOnlineBackend() && onlineActive)
 
     fun playbackSnapshot(): TtsPlaybackSession = TtsPlaybackSession(
         fileName = currentFileName,
@@ -217,6 +226,7 @@ class TtsController(
                 val timeoutMs = if (enginePackage == null) DEFAULT_ENGINE_TIMEOUT_MS else PER_ENGINE_TIMEOUT_MS
                 val success = TtsHelper.awaitEngineReady(initDeferred, timeoutMs = timeoutMs) == true && ready
                 if (success) {
+                    refreshOnlineBackend()
                     return@withContext true
                 }
                 awaitingInitAttemptId++
@@ -224,18 +234,43 @@ class TtsController(
                 tts = null
                 ready = false
             }
-            false
+            refreshOnlineBackend()
+            wantsOnlineBackend() && onlineActive
+        }
+    }
+
+    private suspend fun refreshOnlineBackend() {
+        if (!wantsOnlineBackend()) {
+            onlineActive = false
+            return
+        }
+        onlineActive = ensureOnlineBackend().awaitReady()
+        ensureOnlineBackend().setSpeechRate(speechRate)
+        ensureOnlineBackend().setPitch(pitch)
+    }
+
+    fun speechBackend(): TtsSpeechBackend = settingsStore.getTtsSpeechBackend()
+
+    fun applySpeechBackend(backend: TtsSpeechBackend) {
+        settingsStore.saveTtsSpeechBackend(backend)
+        if (backend == TtsSpeechBackend.ONLINE_EDGE) {
+            val edgeVoice = settingsStore.getEdgeTtsVoiceId()
+            if (!EdgeTtsVoices.isKnownVoice(edgeVoice)) {
+                settingsStore.saveEdgeTtsVoiceId(SettingsStore.DEFAULT_EDGE_TTS_VOICE)
+            }
         }
     }
 
     fun setSpeechRate(rate: Float) {
         speechRate = rate
         tts?.setSpeechRate(rate)
+        onlineBackend?.setSpeechRate(rate)
     }
 
     fun setPitch(value: Float) {
         pitch = value
         tts?.setPitch(value)
+        onlineBackend?.setPitch(value)
     }
 
     fun setLoopEnabled(enabled: Boolean) {
@@ -250,16 +285,30 @@ class TtsController(
 
     fun currentSpeechRate(): Float = speechRate
 
-    fun diagnostics(): TtsHelper.TtsDiagnostics =
-        TtsHelper.getDiagnostics(
+    fun diagnostics(): TtsHelper.TtsDiagnostics {
+        if (wantsOnlineBackend()) {
+            return ensureOnlineBackend().diagnostics()
+        }
+        return TtsHelper.getDiagnostics(
             context = appContext,
             engine = tts,
             activeEnginePackage = activeEnginePackage ?: tts?.defaultEngine,
             preferredVoiceName = settingsStore.getSelectedVoiceId(),
             preference = readVoicePreference(),
         )
+    }
+
+    fun voiceQualityTier(): TtsVoiceQualityTier {
+        if (wantsOnlineBackend() && onlineActive) {
+            return TtsVoiceQualityTier.NEURAL_ONLINE
+        }
+        return TtsVoiceQuality.assess(diagnostics())
+    }
 
     fun listVoiceOptions(): List<TtsVoiceOption> {
+        if (wantsOnlineBackend()) {
+            return ensureOnlineBackend().listVoiceOptions()
+        }
         val engine = tts ?: return emptyList()
         return TtsHelper.toVoiceOptions(
             voices = TtsHelper.listChineseVoices(engine),
@@ -268,6 +317,11 @@ class TtsController(
     }
 
     fun applySelectedVoice(voiceId: String?) {
+        if (wantsOnlineBackend()) {
+            voiceId?.let { ensureOnlineBackend().applySelectedVoice(it) }
+            settingsStore.saveSelectedVoiceId(voiceId)
+            return
+        }
         settingsStore.saveSelectedVoiceId(voiceId)
         tts?.let { engine ->
             val setup = TtsHelper.setupChineseVoice(
@@ -300,7 +354,10 @@ class TtsController(
     }
 
     fun previewSample() {
-        if (!ready) return
+        if (!isReady()) {
+            onSpeakError("语音引擎尚未就绪")
+            return
+        }
         speakText("你好，这是笔记朗读的语音试听。", "preview")
     }
 
@@ -309,7 +366,7 @@ class TtsController(
     }
 
     fun start(fileName: String, title: String, text: String) {
-        if (!ready) {
+        if (!isReady()) {
             onSpeakError("语音引擎尚未就绪")
             return
         }
@@ -345,6 +402,16 @@ class TtsController(
     fun pause() {
         if (!isPlaying.get()) return
         pausedByAudioFocus = false
+        if (shouldUseOnline()) {
+            if (!isPaused.get()) {
+                ensureOnlineBackend().pause()
+                isPaused.set(true)
+                wakeLock.release()
+                onPlaybackStateChanged(false)
+                notifySessionChanged()
+            }
+            return
+        }
         pauseForAudioFocusLoss()
     }
 
@@ -367,10 +434,15 @@ class TtsController(
         onPlaybackStateChanged(true)
         notifySessionChanged()
         wakeLock.acquire()
-        speakCurrent()
+        if (shouldUseOnline()) {
+            ensureOnlineBackend().resume()
+        } else {
+            speakCurrent()
+        }
     }
 
     fun stop() {
+        onlineBackend?.stop()
         tts?.stop()
         abandonAudioFocus()
         wakeLock.release()
@@ -388,6 +460,7 @@ class TtsController(
 
     fun nextSegment() {
         if (currentIndex < segments.lastIndex) {
+            onlineBackend?.stop()
             tts?.stop()
             currentIndex++
             onSegmentChanged(currentIndex, segments.size)
@@ -406,6 +479,9 @@ class TtsController(
     }
 
     private fun shutdownEngineOnly() {
+        onlineBackend?.shutdown()
+        onlineBackend = null
+        onlineActive = false
         tts?.shutdown()
         tts = null
         ready = false
@@ -427,8 +503,9 @@ class TtsController(
     }
 
     private fun speakCurrent() {
-        if (!ready) {
+        if (!isReady()) {
             onSpeakError("语音引擎尚未就绪")
+            stop()
             return
         }
         if (segments.isEmpty()) {
@@ -449,14 +526,68 @@ class TtsController(
         speakText(segment, "seg-$currentIndex")
     }
 
+    private fun handleSegmentFinished() {
+        if (!isPlaying.get() || isPaused.get()) return
+        if (currentIndex < segments.lastIndex) {
+            currentIndex++
+            onSegmentChanged(currentIndex, segments.size)
+            notifySessionChanged()
+            speakCurrent()
+        } else if (TtsPlaybackEndAction.shouldContinueAfterLastSegment(
+                loopEnabled,
+                sleepTimerStateProvider(),
+            )
+        ) {
+            currentIndex = 0
+            onSegmentChanged(currentIndex, segments.size)
+            notifySessionChanged()
+            speakCurrent()
+        } else {
+            stop()
+        }
+    }
+
     private fun speakText(text: String, utteranceId: String) {
+        if (!ensureAudioFocus()) {
+            onSpeakError("无法获取音频焦点，请关闭其他正在播放的应用后重试")
+            stop()
+            return
+        }
+        if (wantsOnlineBackend()) {
+            if (shouldUseOnline()) {
+                ensureOnlineBackend().speak(
+                    text = text,
+                    utteranceId = utteranceId,
+                    onDone = { handleSegmentFinished() },
+                    onError = { message ->
+                        if (ready && tts != null) {
+                            onSpeakError("在线合成失败，已改用系统语音：$message")
+                            speakWithSystem(text, utteranceId)
+                        } else {
+                            onSpeakError(message)
+                            stop()
+                        }
+                    },
+                )
+                return
+            }
+            if (ready && tts != null) {
+                onSpeakError("当前无网络，已改用系统语音朗读")
+                speakWithSystem(text, utteranceId)
+                return
+            }
+            onSpeakError("无网络且系统语音未就绪，无法朗读")
+            stop()
+            return
+        }
+        speakWithSystem(text, utteranceId)
+    }
+
+    private fun speakWithSystem(text: String, utteranceId: String) {
         val engine = tts
         if (engine == null || !ready) {
             onSpeakError("语音引擎尚未就绪")
-            return
-        }
-        if (!ensureAudioFocus()) {
-            onSpeakError("无法获取音频焦点，请关闭其他正在播放的应用后重试")
+            stop()
             return
         }
         val params = Bundle().apply {

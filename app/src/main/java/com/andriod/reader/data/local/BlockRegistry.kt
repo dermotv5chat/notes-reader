@@ -6,6 +6,7 @@ import javax.inject.Singleton
 data class CalloutKey(
     val lineIndex: Int,
     val variant: String,
+    val modifiers: List<String> = emptyList(),
     val text: String,
     val rawLine: String,
 )
@@ -43,7 +44,13 @@ class BlockRegistry @Inject constructor(
             } else {
                 newBlockId()
             }
-            newEntries[id] = BlockRegistryEntry(variant = callout.variant, textHint = callout.text)
+            val practiceInfo = CalloutCadenceResolver.resolve(callout.variant, callout.modifiers)
+            newEntries[id] = BlockRegistryEntry(
+                variant = callout.variant,
+                textHint = callout.text,
+                mode = practiceInfo.mode.name,
+                repeatPeriod = practiceInfo.repeatPeriod.name,
+            )
             newOrder.add(id)
             migrateLegacyPracticeIds(fileName, callout, id)
         }
@@ -62,9 +69,16 @@ class BlockRegistry @Inject constructor(
         state.order.indices.forEach { index ->
             val id = state.order[index]
             val entry = updatedEntries[id] ?: return@forEach
-            val newHint = callouts[index].text
-            if (entry.textHint != newHint) {
-                updatedEntries[id] = entry.copy(textHint = newHint)
+            val callout = callouts[index]
+            val practiceInfo = CalloutCadenceResolver.resolve(callout.variant, callout.modifiers)
+            val newHint = callout.text
+            val updated = entry.copy(
+                textHint = newHint,
+                mode = practiceInfo.mode.name,
+                repeatPeriod = practiceInfo.repeatPeriod.name,
+            )
+            if (updated != entry) {
+                updatedEntries[id] = updated
                 changed = true
             }
         }
@@ -112,6 +126,8 @@ class BlockRegistry @Inject constructor(
             }
         }
     }
+
+    fun readRegistry(fileName: String): FileBlockRegistry = store.read(fileName)
 
     private fun newBlockId(): String = java.util.UUID.randomUUID().toString().replace("-", "").take(12)
 

@@ -218,7 +218,7 @@ $env:GRADLE_USER_HOME = "$env:USERPROFILE\.gradle"
 | 阶段 | 内容 | 状态 |
 |------|------|------|
 | **P1** | Callout 可点、今日践行、历史、评论、隐式块 ID | ✅ 已实现 |
-| **P2** | 准则频率（daily/when）、色条、日历 | 📋 计划 |
+| **P2** | cadence 分流、养成色条、Sheet 月历 | ✅ 已实现 |
 | **P3** | 全文朗读 session 统计 | 📋 计划 |
 | **二期** | 块拖拽编辑、富文本、自动同步等 | 📋 [docs/二期功能讨论.md](docs/二期功能讨论.md) |
 

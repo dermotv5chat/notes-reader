@@ -78,6 +78,7 @@ dependencies {
     implementation(libs.okhttp.logging)
     implementation(libs.security.crypto)
     implementation(libs.media)
+    implementation(libs.media3.exoplayer)
     implementation(libs.coroutines.android)
     testImplementation(libs.junit)
     testImplementation(platform(libs.androidx.compose.bom))

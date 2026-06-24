@@ -48,7 +48,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.andriod.reader.domain.TtsVoicePreference
+import com.andriod.reader.ui.tts.TtsVoiceSettingsSection
 import com.andriod.reader.service.SleepTimerDisplay
 import com.andriod.reader.service.SleepTimerMode
 
@@ -356,7 +356,8 @@ private fun SleepTimerSlider(
 fun ReaderTtsSettingsSheet(
     uiState: ReaderUiState,
     onDismiss: () -> Unit,
-    onVoicePreferenceChange: (TtsVoicePreference) -> Unit,
+    onSpeechBackendChange: (com.andriod.reader.domain.TtsSpeechBackend) -> Unit,
+    onVoicePreferenceChange: (com.andriod.reader.domain.TtsVoicePreference) -> Unit,
     onVoicePickerExpandedChange: (Boolean) -> Unit,
     onVoiceSelected: (String) -> Unit,
     onSpeechRateChange: (Float) -> Unit,
@@ -377,64 +378,18 @@ fun ReaderTtsSettingsSheet(
                 modifier = Modifier.padding(bottom = 16.dp),
             )
 
-            if (uiState.voiceOptions.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilterChip(
-                        selected = uiState.voicePreference == TtsVoicePreference.AUTO,
-                        onClick = { onVoicePreferenceChange(TtsVoicePreference.AUTO) },
-                        label = { Text("自动") },
-                    )
-                    FilterChip(
-                        selected = uiState.voicePreference == TtsVoicePreference.PREFER_LOCAL,
-                        onClick = { onVoicePreferenceChange(TtsVoicePreference.PREFER_LOCAL) },
-                        label = { Text("离线") },
-                    )
-                    FilterChip(
-                        selected = uiState.voicePreference == TtsVoicePreference.PREFER_ONLINE,
-                        onClick = { onVoicePreferenceChange(TtsVoicePreference.PREFER_ONLINE) },
-                        label = { Text("在线") },
-                    )
-                }
-
-                val selectedLabel = uiState.voiceOptions
-                    .find { it.id == uiState.selectedVoiceId }
-                    ?.label ?: "选择朗读语音"
-                ExposedDropdownMenuBox(
-                    expanded = uiState.voicePickerExpanded,
-                    onExpandedChange = onVoicePickerExpandedChange,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                ) {
-                    OutlinedTextField(
-                        value = selectedLabel,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("朗读语音") },
-                        trailingIcon = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(uiState.voicePickerExpanded)
-                        },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth(),
-                    )
-                    ExposedDropdownMenu(
-                        expanded = uiState.voicePickerExpanded,
-                        onDismissRequest = { onVoicePickerExpandedChange(false) },
-                    ) {
-                        uiState.voiceOptions.forEach { option ->
-                            DropdownMenuItem(
-                                text = { Text(option.label) },
-                                onClick = { onVoiceSelected(option.id) },
-                            )
-                        }
-                    }
-                }
-            }
+            TtsVoiceSettingsSection(
+                voiceOptions = uiState.voiceOptions,
+                selectedVoiceId = uiState.selectedVoiceId,
+                voicePreference = uiState.voicePreference,
+                speechBackend = uiState.speechBackend,
+                qualityGuide = uiState.ttsQualityHint,
+                onVoicePreferenceChange = onVoicePreferenceChange,
+                onVoicePickerExpandedChange = onVoicePickerExpandedChange,
+                onVoiceSelected = onVoiceSelected,
+                onSpeechBackendChange = onSpeechBackendChange,
+                voicePickerExpanded = uiState.voicePickerExpanded,
+            )
 
             Text("语速 ${"%.1f".format(uiState.speechRate)}x")
             Slider(

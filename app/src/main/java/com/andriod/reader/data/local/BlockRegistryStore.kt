@@ -50,4 +50,8 @@ data class FileBlockRegistry(
 data class BlockRegistryEntry(
     val variant: String,
     val textHint: String = "",
+    val mode: String? = null,
+    val repeatPeriod: String? = null,
+    val cadence: String? = null,
+    val dailyKind: String? = null,
 )

@@ -8,7 +8,7 @@ enum class PracticeEvent {
     COMMENT,
 }
 
-/** Latest practice summary for a block on a given day (used for status dots). */
+/** Latest practice summary for a block in the current period (used for status dots). */
 data class PracticeDayEntry(
     val event: PracticeEvent,
     val note: String = "",
@@ -20,3 +20,12 @@ data class PracticeLogEntry(
     val note: String = "",
     val recordedAt: Instant,
 )
+
+fun parsePracticeEvent(raw: String): PracticeEvent? = when (raw) {
+    "FOLLOWED" -> PracticeEvent.FOLLOWED
+    "VIOLATED" -> PracticeEvent.VIOLATED
+    "COMMENT" -> PracticeEvent.COMMENT
+    "PARTIAL" -> PracticeEvent.FOLLOWED
+    "NOT_ENCOUNTERED" -> null
+    else -> runCatching { PracticeEvent.valueOf(raw) }.getOrNull()
+}

@@ -12,9 +12,11 @@ object PrinciplesGuideContent {
             title = "功能概览",
             paragraphs = listOf(
                 "阅读页将笔记按块展示；准则类块可点击。",
-                "点击准则块后，轻点「遵守」或「违背」即可快记；长按按钮可加备注；点「评论」写想法。",
-                "块旁圆点：绿色 = 今日遵守，红色 = 今日违背，浅灰 = 今日尚未记录。",
-                "践行记录保存在本机 .meta 目录，不会随 GitHub 同步；笔记正文仍为 .md 文件。",
+                "点击准则块后，轻点按钮快记；长按可加备注；点「评论」写想法。",
+                "REPEATLY 型（默认 habit）：本周期未记显示灰点，记过显示绿/红；可写 |week、|month。",
+                "WHEN 型（默认 rule）：多数日子无圆点，记过才亮并显示「上次日期」。",
+                "块左侧竖条为近 30 天养成色（绿好、红差、灰中性）。",
+                "践行记录保存在本机 .meta 目录，不会随 GitHub 同步。",
             ),
         ),
         GuideSection(
@@ -65,10 +67,17 @@ object PrinciplesGuideContent {
         GuideSection(
             title = "[!rule] 与 [!habit]",
             paragraphs = listOf(
-                "P1 中记录方式相同（遵守 / 违背）。",
-                "[!habit] 建议用于每天可检的习惯（作息）。",
-                "[!rule] 建议用于遇到场景才用的原则（沟通、决策）。",
-                "P2 将按类型细化交互（如「今天遇到了吗」、养成色条等）。",
+                "[!habit] 默认 REPEATLY 日周期：每天可检（作息、戒断）。",
+                "[!rule] 默认 WHEN：遇到场景才记；多数日子不点块即可。",
+                "周期后缀：`> [!habit|week]`、`> [!habit|month]`；`|always` 等同 WHEN。",
+            ),
+        ),
+        GuideSection(
+            title = "践行弹窗",
+            paragraphs = listOf(
+                "统一按钮：遵守 / 违背 / 评论。",
+                "WHEN：没遇到时不点开；REPEATLY：本周期灰点提醒未记。",
+                "历史可展开，支持列表与月历两种视图。",
             ),
         ),
         GuideSection(
