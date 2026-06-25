@@ -42,11 +42,14 @@ class TtsPreSynthPipeline(
     val progress: StateFlow<TtsPreSynthProgress> = _progress.asStateFlow()
 
     private var prepareJob: Job? = null
+    private var preparingPlainText: String? = null
     private var currentResult: TtsPreSynthResult? = null
     private var lastPlainText: String? = null
     private var lastContentHash: String? = null
     private var autoPlayAfterReady: Boolean = false
     private var onReadyPlay: (() -> Unit)? = null
+
+    fun isPrepareInProgress(): Boolean = prepareJob?.isActive == true
 
     fun usesPresynthBackend(): Boolean {
         val backend = settingsStore.getTtsSpeechBackend()
@@ -58,12 +61,20 @@ class TtsPreSynthPipeline(
             _progress.value = TtsPreSynthProgress(state = TtsPresynthUiState.Hidden)
             return
         }
+        if (isPrepareInProgress()) {
+            val activePlain = preparingPlainText
+            if (activePlain != null && activePlain != plainText) {
+                return
+            }
+            if (activePlain == plainText) {
+                return
+            }
+        }
         val hash = contentHash(plainText)
         val charCount = plainText.length
         val cacheKey = cacheKeyFor(plainText)
         val cached = findCachedResult(cacheKey)
         when {
-            prepareJob?.isActive == true -> Unit
             cached != null && hash == lastContentHash -> {
                 currentResult = cached
                 _progress.value = TtsPreSynthProgress(
@@ -118,7 +129,7 @@ class TtsPreSynthPipeline(
         }
         val hash = contentHash(plainText)
         val charCount = plainText.length
-        if (prepareJob?.isActive == true && lastPlainText == plainText) {
+        if (isPrepareInProgress() && preparingPlainText == plainText) {
             return _progress.value
         }
         val cached = findCachedResult(cacheKeyFor(plainText))
@@ -152,11 +163,13 @@ class TtsPreSynthPipeline(
         autoPlayWhenReady: Boolean = false,
         onAutoPlay: (() -> Unit)? = null,
         onPrepareFailed: ((String) -> Unit)? = null,
+        onPrepareCancelled: (() -> Unit)? = null,
     ) {
         if (!usesPresynthBackend()) return
         autoPlayAfterReady = autoPlayWhenReady
         onReadyPlay = onAutoPlay
         prepareJob?.cancel()
+        preparingPlainText = plainText
         prepareJob = scope.launch {
             try {
                 val hash = contentHash(plainText)
@@ -197,7 +210,15 @@ class TtsPreSynthPipeline(
                 if (autoPlayAfterReady) onReadyPlay?.invoke()
             } catch (e: CancellationException) {
                 diagnosticLog.d("TtsPreSynth", "cancelled")
-                refreshUiStateForNote(plainText)
+                val wasActiveJob = preparingPlainText == plainText
+                if (wasActiveJob) {
+                    preparingPlainText = null
+                    prepareJob = null
+                }
+                onPrepareCancelled?.invoke()
+                if (!isPrepareInProgress()) {
+                    refreshUiStateForNote(plainText)
+                }
             } catch (e: Exception) {
                 diagnosticLog.e("TtsPreSynth", "failed", e)
                 currentResult = null
@@ -212,14 +233,21 @@ class TtsPreSynthPipeline(
                     val message = e.message?.takeIf { it.isNotBlank() } ?: hint
                     onPrepareFailed?.invoke(message)
                 }
+            } finally {
+                if (preparingPlainText == plainText) {
+                    preparingPlainText = null
+                    prepareJob = null
+                }
             }
         }
     }
 
     fun cancelPrepare() {
+        val plain = preparingPlainText
         prepareJob?.cancel()
         prepareJob = null
-        lastPlainText?.let { refreshUiStateForNote(it) }
+        preparingPlainText = null
+        plain?.let { refreshUiStateForNote(it) }
     }
 
     fun invalidateForContentChange() {

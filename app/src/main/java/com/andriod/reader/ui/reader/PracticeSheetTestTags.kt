@@ -9,7 +9,7 @@ object PracticeSheetTestTags {
     const val HISTORY_TAB_LIST = "practice_history_tab_list"
     const val HISTORY_TAB_CALENDAR = "practice_history_tab_calendar"
     const val HISTORY_CALENDAR = "practice_history_calendar"
-    const val COMMENT_BUTTON = "practice_comment_button"
+    const val MUYU_BUTTON = "practice_muyu_button"
     const val NOTE_FIELD = "practice_note_field"
     const val NOTE_DIALOG = "practice_note_dialog"
     const val NOTE_CONFIRM_BUTTON = "practice_note_confirm_button"

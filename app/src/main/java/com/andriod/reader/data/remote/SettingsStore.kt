@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.andriod.reader.domain.GitHubSettings
+import com.andriod.reader.domain.MuyuSoundPreset
 import com.andriod.reader.service.LastSleepTimerPreset
 import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.service.synthesis.SherpaModelCatalog
@@ -140,6 +141,27 @@ class SettingsStore @Inject constructor(
         )
     }
 
+    fun isMuyuSoundEnabled(): Boolean =
+        prefs.getBoolean(KEY_MUYU_SOUND_ENABLED, DEFAULT_MUYU_SOUND_ENABLED)
+
+    fun setMuyuSoundEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_MUYU_SOUND_ENABLED, enabled).apply()
+    }
+
+    fun isMuyuVibrationEnabled(): Boolean =
+        prefs.getBoolean(KEY_MUYU_VIBRATION_ENABLED, DEFAULT_MUYU_VIBRATION_ENABLED)
+
+    fun setMuyuVibrationEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_MUYU_VIBRATION_ENABLED, enabled).apply()
+    }
+
+    fun getMuyuSoundPreset(): MuyuSoundPreset =
+        MuyuSoundPreset.fromStored(prefs.getString(KEY_MUYU_SOUND_PRESET, null))
+
+    fun setMuyuSoundPreset(preset: MuyuSoundPreset) {
+        prefs.edit().putString(KEY_MUYU_SOUND_PRESET, preset.storageKey).apply()
+    }
+
     fun saveLastSleepTimerPreset(preset: LastSleepTimerPreset) {
         val editor = prefs.edit().putString(
             KEY_LAST_SLEEP_TIMER_TYPE,
@@ -168,6 +190,11 @@ class SettingsStore @Inject constructor(
         private const val KEY_EDGE_TTS_VOICE = "edge_tts_voice"
         private const val KEY_SHERPA_MODEL_PACK = "sherpa_model_pack_id"
         private const val KEY_SHERPA_SPEAKER_ID = "sherpa_speaker_id"
+        private const val KEY_MUYU_SOUND_ENABLED = "muyu_sound_enabled"
+        private const val KEY_MUYU_VIBRATION_ENABLED = "muyu_vibration_enabled"
+        private const val KEY_MUYU_SOUND_PRESET = "muyu_sound_preset"
         const val DEFAULT_EDGE_TTS_VOICE = "zh-CN-XiaoxiaoNeural"
+        internal const val DEFAULT_MUYU_SOUND_ENABLED = true
+        internal const val DEFAULT_MUYU_VIBRATION_ENABLED = true
     }
 }

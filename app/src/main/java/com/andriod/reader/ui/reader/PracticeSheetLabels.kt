@@ -1,5 +1,6 @@
 package com.andriod.reader.ui.reader
 
+import com.andriod.reader.domain.PracticeEvent
 import com.andriod.reader.domain.PracticeMode
 import com.andriod.reader.domain.RepeatPeriod
 
@@ -15,4 +16,12 @@ object PracticeSheetLabels {
     fun followedLabel(): String = "遵守"
 
     fun violatedLabel(): String = "违背"
+
+    fun muyuLabel(): String = "敲一下"
+
+    fun eventLabel(event: PracticeEvent): String = when (event) {
+        PracticeEvent.FOLLOWED -> followedLabel()
+        PracticeEvent.VIOLATED -> violatedLabel()
+        PracticeEvent.MUYU -> muyuLabel()
+    }
 }

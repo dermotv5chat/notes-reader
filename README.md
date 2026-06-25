@@ -203,6 +203,65 @@ cd E:\workspace\andriod-reader
 2. 在文件管理器中点击安装
 3. 若系统提示「未知来源」，在设置中允许该来源安装应用
 
+## 在 Windows 上查看 Android 日志
+
+常用以下几种方式（排查 TTS、同步等问题时配合 **设置 → 存储与诊断** 里导出的诊断日志一起看）。
+
+### 1. Android Studio（最省事）
+
+1. 手机打开 **USB 调试**，用数据线连电脑
+2. 打开 Android Studio → 打开 `andriod-reader` 工程
+3. 底部点 **Logcat**（或 `View` → `Tool Windows` → `Logcat`）
+4. 设备选你的手机，进程选 `com.andriod.reader`
+5. 搜索框可过滤，例如：
+   - `ReaderDiag`（App 诊断日志 tag）
+   - `package:com.andriod.reader`
+
+### 2. 命令行 adb（不开 Studio 也行）
+
+先确认 adb 可用（Android SDK 的 `platform-tools` 在 PATH 里）：
+
+```powershell
+adb devices
+```
+
+有设备后：
+
+```powershell
+# 只看本 App
+adb logcat --pid=$(adb shell pidof -s com.andriod.reader)
+
+# 或按 tag 过滤
+adb logcat -s ReaderDiag
+
+# 清空旧日志再复现问题
+adb logcat -c
+adb logcat -s ReaderDiag
+```
+
+若 `pidof` 不支持，可先启动 App，再：
+
+```powershell
+adb logcat | Select-String "andriod.reader"
+```
+
+### 3. 无线调试（Android 11+，可选）
+
+```powershell
+adb pair <IP:配对端口>
+adb connect <IP:连接端口>
+adb devices
+```
+
+之后同样用 Studio Logcat 或 `adb logcat`。
+
+**小提示**
+
+- 第一次连接手机会弹出「允许 USB 调试」，要点允许
+- 没设备时：换线、换 USB 口、装/更新 [Google USB Driver](https://developer.android.com/studio/run/win-usb)
+- 复现 TTS 等问题：先 `adb logcat -c` 清空，再操作 App，日志更干净
+- App 内可在 **设置 → 存储与诊断** 导出诊断 txt；开发调试仍建议配合 **Logcat + `ReaderDiag` tag**
+
 ## Debug 版 vs Release 版
 
 | | Debug | Release |

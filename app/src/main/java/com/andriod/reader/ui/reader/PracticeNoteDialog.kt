@@ -23,19 +23,16 @@ internal fun PracticeNoteDialog(
     editMode: Boolean = false,
 ) {
     var note by remember(event, initialNote, editMode) { mutableStateOf(initialNote) }
-    val isComment = event == PracticeEvent.COMMENT
     val title = when {
         editMode && initialNote.isBlank() -> "添加备注"
         editMode -> "编辑备注"
-        isComment -> "写评论"
         else -> "添加备注"
     }
     val fieldLabel = when (event) {
-        PracticeEvent.COMMENT -> "想法或评论"
+        PracticeEvent.MUYU -> "备注（敲一下）"
         PracticeEvent.FOLLOWED -> "备注（遵守）"
         PracticeEvent.VIOLATED -> "备注（违背）"
     }
-    val canConfirm = !isComment || note.isNotBlank()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -59,7 +56,6 @@ internal fun PracticeNoteDialog(
         confirmButton = {
             TextButton(
                 onClick = { onConfirm(note.trim()) },
-                enabled = canConfirm,
                 modifier = Modifier.testTag(PracticeSheetTestTags.NOTE_CONFIRM_BUTTON),
             ) {
                 Text("确认")

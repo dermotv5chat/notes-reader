@@ -15,6 +15,12 @@ import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 object TtsPlaybackManager {
     private var controller: TtsController? = null
@@ -37,6 +43,9 @@ object TtsPlaybackManager {
     private var attachedPlaybackCallback: (Boolean) -> Unit = noopPlayback
     private var attachedErrorCallback: (String) -> Unit = noopError
 
+    private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var progressTickerJob: Job? = null
+
     private fun diagnosticLog(context: Context): AppDiagnosticLog {
         return EntryPointAccessors.fromApplication(
             context.applicationContext,
@@ -56,7 +65,11 @@ object TtsPlaybackManager {
         return sleepTimer ?: TtsSleepTimer(
             context = context.applicationContext,
             onSessionChanged = { syncSession() },
-            onExpired = { stopPlayback(clearTimer = false) },
+            onExpired = {
+                mainScope.launch {
+                    stopPlayback(clearTimer = false)
+                }
+            },
         ).also { sleepTimer = it }
     }
 
@@ -87,6 +100,34 @@ object TtsPlaybackManager {
             sleepTimerLabel = timer.label,
             presynthGenerating = generating,
         )
+        updateProgressTicker(_session.value.isPlaying)
+    }
+
+    private fun updateProgressTicker(isPlaying: Boolean) {
+        if (isPlaying) {
+            if (progressTickerJob?.isActive == true) return
+            progressTickerJob = mainScope.launch {
+                while (_session.value.isPlaying) {
+                    delay(500)
+                    if (!_session.value.isPlaying) break
+                    val base = controller?.playbackSnapshot() ?: break
+                    updateSleepTimerForPlayback(base)
+                    val timer = sleepTimer?.snapshot() ?: TtsSleepTimerState()
+                    val generating = base.fileName?.let { fileName ->
+                        presynthJobManager?.jobs?.value?.get(fileName)?.isPreparing == true
+                    } ?: false
+                    _session.value = base.copy(
+                        sleepTimerMode = timer.mode,
+                        sleepTimerRemainingMs = timer.remainingMs,
+                        sleepTimerLabel = timer.label,
+                        presynthGenerating = generating,
+                    )
+                }
+            }
+        } else {
+            progressTickerJob?.cancel()
+            progressTickerJob = null
+        }
     }
 
     private fun updateSleepTimerForPlayback(session: TtsPlaybackSession) {
@@ -413,6 +454,8 @@ object TtsPlaybackManager {
         sleepTimer = null
         presynthJobManager = null
         sleepTimerPausedWithPlayback = false
+        progressTickerJob?.cancel()
+        progressTickerJob = null
         _session.value = TtsPlaybackSession()
     }
 

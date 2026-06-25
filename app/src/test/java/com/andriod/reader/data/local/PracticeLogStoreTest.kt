@@ -202,11 +202,11 @@ class PracticeLogStoreTest {
     }
 
     @Test
-    fun getPeriodStatusEntry_ignoresCommentOnly() {
+    fun getPeriodStatusEntry_ignoresMuyuOnly() {
         store.appendEntry(
             fileName,
             blockId,
-            PracticeEvent.COMMENT,
+            PracticeEvent.MUYU,
             note = "今天想法",
             recordedAt = instantOn(today, 10),
         )
@@ -231,7 +231,7 @@ class PracticeLogStoreTest {
     }
 
     @Test
-    fun getPeriodStatusEntry_usesLatestStatusWhenCommentIsNewer() {
+    fun getPeriodStatusEntry_usesLatestStatusWhenMuyuIsNewer() {
         store.appendEntry(
             fileName,
             blockId,
@@ -241,7 +241,7 @@ class PracticeLogStoreTest {
         store.appendEntry(
             fileName,
             blockId,
-            PracticeEvent.COMMENT,
+            PracticeEvent.MUYU,
             note = "补充想法",
             recordedAt = instantOn(today, 12),
         )
@@ -307,5 +307,47 @@ class PracticeLogStoreTest {
         assertEquals(1, history.size)
         assertEquals(PracticeEvent.FOLLOWED, history.first().event)
         assertEquals("补写的备注", history.first().note)
+    }
+
+    @Test
+    fun appendEntry_writesMuyuEventName() {
+        store.appendEntry(
+            fileName = fileName,
+            blockId = blockId,
+            event = PracticeEvent.MUYU,
+            note = "",
+            recordedAt = instantOn(today, 12),
+        )
+
+        val logFile = ApplicationProvider.getApplicationContext<Application>()
+            .filesDir.resolve(".meta/practice-logs.json")
+        assertTrue(logFile.readText().contains("\"MUYU\""))
+        assertEquals(PracticeEvent.MUYU, store.getHistoryForBlock(fileName, blockId).single().event)
+    }
+
+    @Test
+    fun legacyCommentJson_parsesAsMuyu() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val logFile = context.filesDir.resolve(".meta/practice-logs.json")
+        logFile.parentFile?.mkdirs()
+        logFile.writeText(
+            """
+            {
+              "$fileName": {
+                "$blockId": [
+                  {
+                    "event": "COMMENT",
+                    "note": "旧记录",
+                    "recordedAt": "${instantOn(today, 11)}"
+                  }
+                ]
+              }
+            }
+            """.trimIndent(),
+        )
+        val reloaded = PracticeLogStore(context, Gson())
+        val entry = reloaded.getHistoryForBlock(fileName, blockId).single()
+        assertEquals(PracticeEvent.MUYU, entry.event)
+        assertEquals("旧记录", entry.note)
     }
 }

@@ -156,6 +156,10 @@ class OnlineEdgeSpeechBackend(
 
     fun isPaused(): Boolean = player.isPaused()
 
+    fun currentPositionMs(): Long = player.currentPositionMs()
+
+    fun currentDurationMs(): Long = player.durationMs()
+
     override fun diagnostics(): TtsHelper.TtsDiagnostics {
         val voiceId = settingsStore.getEdgeTtsVoiceId()
         return TtsHelper.TtsDiagnostics(

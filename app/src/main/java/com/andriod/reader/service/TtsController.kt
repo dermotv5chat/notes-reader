@@ -12,6 +12,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
@@ -40,7 +41,12 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 class TtsController(
@@ -116,6 +122,11 @@ class TtsController(
     private var presynthSegmentTotal = 0
     private var lastPlainTextForPresynth: String? = null
     private var playbackMode: TtsPlaybackMode = TtsPlaybackMode.None
+    private val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var noteTotalDurationMs: Long = 0L
+    private var completedSegmentMs: Long = 0L
+    private var segmentStartElapsedRealtime: Long = 0L
+    private var frozenPositionMs: Long = 0L
 
     private fun ensureOnlineBackend(): OnlineEdgeSpeechBackend {
         if (onlineBackend == null) {
@@ -261,7 +272,11 @@ class TtsController(
             engine.setSpeechRate(speechRate)
             engine.setPitch(pitch)
             engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) = Unit
+                override fun onStart(utteranceId: String?) {
+                    if (!presynthActive && playbackMode == TtsPlaybackMode.SegmentSystem) {
+                        segmentStartElapsedRealtime = SystemClock.elapsedRealtime()
+                    }
+                }
 
                 override fun onDone(utteranceId: String?) {
                     handleSegmentFinished()
@@ -301,19 +316,135 @@ class TtsController(
         TtsSpeechBackend.SYSTEM -> ready
     }
 
-    fun playbackSnapshot(): TtsPlaybackSession = TtsPlaybackSession(
-        fileName = currentFileName,
-        title = currentTitle,
-        segmentIndex = currentIndex,
-        segmentTotal = TtsPlaybackSnapshotLogic.segmentTotal(
-            presynthActive = presynthActive,
-            presynthSegmentTotal = presynthSegmentTotal,
-            segmentsSize = segments.size,
-        ),
-        isPlaying = isPlaying.get() && !isPaused.get(),
-        isPaused = isPlaying.get() && isPaused.get(),
-        playbackMode = playbackMode,
-    )
+    fun playbackSnapshot(): TtsPlaybackSession {
+        val positionMs = resolvePositionMs()
+        val durationMs = resolveDurationMs()
+        return TtsPlaybackSession(
+            fileName = currentFileName,
+            title = currentTitle,
+            segmentIndex = currentIndex,
+            segmentTotal = TtsPlaybackSnapshotLogic.segmentTotal(
+                presynthActive = presynthActive,
+                presynthSegmentTotal = presynthSegmentTotal,
+                segmentsSize = segments.size,
+            ),
+            isPlaying = isPlaying.get() && !isPaused.get(),
+            isPaused = isPlaying.get() && isPaused.get(),
+            playbackMode = playbackMode,
+            positionMs = positionMs,
+            durationMs = durationMs,
+        )
+    }
+
+    private fun resetProgressTracking() {
+        noteTotalDurationMs = 0L
+        completedSegmentMs = 0L
+        segmentStartElapsedRealtime = 0L
+        frozenPositionMs = 0L
+    }
+
+    private fun resolveDurationMs(): Long {
+        if (presynthActive) {
+            val overall = presynthPlayer?.overallDurationMs() ?: 0L
+            if (overall > 0) return overall
+        }
+        if (noteTotalDurationMs > 0) return noteTotalDurationMs
+        return TtsPlaybackProgress.computeNoteDurationMs(segments, speechRate)
+    }
+
+    private fun resolvePositionMs(): Long {
+        if (!isPlaying.get() && !isPaused.get()) return 0L
+        if (isPaused.get()) return frozenPositionMs.coerceAtLeast(0L)
+        return captureLivePositionMs()
+    }
+
+    private fun captureLivePositionMs(): Long {
+        val position = when {
+            presynthActive -> presynthPlayer?.overallPositionMs() ?: 0L
+            isSherpaSegmentActive() || playbackMode == TtsPlaybackMode.SegmentOnline ->
+                segmentExoPositionMs()
+            segments.isNotEmpty() -> systemSegmentPositionMs()
+            else -> 0L
+        }
+        val duration = resolveDurationMs()
+        return if (duration > 0) position.coerceAtMost(duration) else position.coerceAtLeast(0L)
+    }
+
+    private fun segmentExoPositionMs(): Long {
+        val current = when {
+            isSherpaSegmentActive() -> sherpaBackend?.currentPositionMs() ?: 0L
+            playbackMode == TtsPlaybackMode.SegmentOnline -> onlineBackend?.currentPositionMs() ?: 0L
+            else -> 0L
+        }
+        return TtsPlaybackProgress.overallExoPositionMs(
+            completedMs = completedSegmentMs,
+            currentSegmentPositionMs = current,
+            isPaused = false,
+            frozenPositionMs = frozenPositionMs,
+        )
+    }
+
+    private fun systemSegmentPositionMs(): Long {
+        val estimate = segments.getOrNull(currentIndex)?.let {
+            TtsRemainingEstimate.estimateSegmentDurationMs(it, speechRate)
+        } ?: 0L
+        val elapsed = if (segmentStartElapsedRealtime > 0L) {
+            SystemClock.elapsedRealtime() - segmentStartElapsedRealtime
+        } else {
+            0L
+        }
+        return TtsPlaybackProgress.computeNotePositionMs(
+            completedMs = completedSegmentMs,
+            currentSegmentPositionMs = 0L,
+            segmentStartElapsedMs = elapsed,
+            segmentEstimateMs = estimate,
+            isPaused = false,
+            frozenPositionMs = frozenPositionMs,
+        )
+    }
+
+    private fun accumulateCompletedSegment() {
+        if (presynthActive) return
+        val segmentText = segments.getOrNull(currentIndex).orEmpty()
+        val estimate = TtsRemainingEstimate.estimateSegmentDurationMs(segmentText, speechRate)
+        val played = when {
+            isSherpaSegmentActive() -> {
+                sherpaBackend?.currentDurationMs()?.takeIf { it > 0 }
+                    ?: sherpaBackend?.currentPositionMs()?.takeIf { it > 0 }
+                    ?: estimate
+            }
+            playbackMode == TtsPlaybackMode.SegmentOnline -> {
+                onlineBackend?.currentDurationMs()?.takeIf { it > 0 }
+                    ?: onlineBackend?.currentPositionMs()?.takeIf { it > 0 }
+                    ?: estimate
+            }
+            else -> {
+                val elapsed = if (segmentStartElapsedRealtime > 0L) {
+                    SystemClock.elapsedRealtime() - segmentStartElapsedRealtime
+                } else {
+                    estimate
+                }
+                elapsed.coerceAtMost(estimate).coerceAtLeast(0L)
+            }
+        }
+        completedSegmentMs += played
+        segmentStartElapsedRealtime = 0L
+    }
+
+    private fun loadPresynthDurations(result: com.andriod.reader.service.synthesis.TtsPreSynthResult) {
+        controllerScope.launch {
+            val durations = withContext(Dispatchers.IO) {
+                AudioFileDurationReader.readDurationsMs(result.audioFiles)
+            }
+            if (!presynthActive) return@launch
+            presynthPlayer?.setChunkDurationsMs(durations)
+            val loadedTotal = durations.sum()
+            if (loadedTotal > 0) {
+                noteTotalDurationMs = loadedTotal
+            }
+            notifySessionChanged()
+        }
+    }
 
     fun updateCallbacks(
         onSegmentChanged: (Int, Int) -> Unit,
@@ -570,6 +701,8 @@ class TtsController(
             onSpeakError("没有可朗读的正文")
             return
         }
+        resetProgressTracking()
+        noteTotalDurationMs = TtsPlaybackProgress.computeNoteDurationMs(segments, speechRate)
         currentIndex = 0
         isPlaying.set(true)
         isPaused.set(false)
@@ -609,6 +742,11 @@ class TtsController(
             onSpeakError("语音尚未就绪")
             return
         }
+        resetProgressTracking()
+        noteTotalDurationMs = TtsPlaybackProgress.computeNoteDurationMs(
+            splitSegments(plain),
+            speechRate,
+        )
         if (!ensureAudioFocus()) {
             onSpeakError("无法获取音频焦点，请关闭其他正在播放的应用后重试")
             return
@@ -626,6 +764,7 @@ class TtsController(
         onPlaybackStateChanged(true)
         notifySessionChanged()
         wakeLock.acquire()
+        loadPresynthDurations(result)
         presynthPlayer!!.setSpeechRate(speechRate)
         presynthPlayer!!.playResult(
             result = result,
@@ -673,6 +812,9 @@ class TtsController(
 
     fun pause() {
         if (!isPlaying.get()) return
+        if (!isPaused.get()) {
+            frozenPositionMs = captureLivePositionMs()
+        }
         pausedByAudioFocus = false
         if (presynthActive) {
             if (!isPaused.get()) {
@@ -709,6 +851,7 @@ class TtsController(
 
     private fun pauseForAudioFocusLoss() {
         if (!isPlaying.get() || isPaused.get()) return
+        frozenPositionMs = captureLivePositionMs()
         tts?.stop()
         isPaused.set(true)
         wakeLock.release()
@@ -755,6 +898,7 @@ class TtsController(
         segments.clear()
         currentFileName = null
         currentTitle = null
+        resetProgressTracking()
         onSegmentChanged(0, 0)
         onPlaybackStateChanged(false)
         notifySessionChanged()
@@ -838,6 +982,7 @@ class TtsController(
 
     private fun handleSegmentFinished() {
         if (!isPlaying.get() || isPaused.get()) return
+        accumulateCompletedSegment()
         if (currentIndex < segments.lastIndex) {
             currentIndex++
             onSegmentChanged(currentIndex, segments.size)
@@ -1019,7 +1164,8 @@ class TtsController(
 object TtsNotificationHelper {
     const val CHANNEL_ID = "tts_playback"
     const val NOTIFICATION_ID = 1001
-    private const val ALBUM_ART_SIZE_PX = 256
+    private const val ALBUM_ART_SIZE_PX = 128
+    private var cachedAlbumArt: Bitmap? = null
 
     fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1034,10 +1180,15 @@ object TtsNotificationHelper {
     }
 
     fun albumArtBitmap(context: Context): Bitmap {
+        cachedAlbumArt?.let { return it }
         val drawable = ContextCompat.getDrawable(context, R.mipmap.ic_launcher)
             ?: ContextCompat.getDrawable(context, R.drawable.ic_notification)
-            ?: return Bitmap.createBitmap(ALBUM_ART_SIZE_PX, ALBUM_ART_SIZE_PX, Bitmap.Config.ARGB_8888)
-        return drawable.toBitmap(ALBUM_ART_SIZE_PX, ALBUM_ART_SIZE_PX, Bitmap.Config.ARGB_8888)
+            ?: return Bitmap.createBitmap(ALBUM_ART_SIZE_PX, ALBUM_ART_SIZE_PX, Bitmap.Config.ARGB_8888).also {
+                cachedAlbumArt = it
+            }
+        return drawable.toBitmap(ALBUM_ART_SIZE_PX, ALBUM_ART_SIZE_PX, Bitmap.Config.ARGB_8888).also {
+            cachedAlbumArt = it
+        }
     }
 
     fun buildNotification(
@@ -1129,8 +1280,8 @@ object TtsNotificationHelper {
 
     private fun subtitleFor(session: TtsPlaybackSession): String {
         val base = when {
-            session.isPlaying && session.segmentTotal > 0 ->
-                "段落 ${session.segmentIndex + 1} / ${session.segmentTotal}"
+            session.durationMs > 0 ->
+                TtsPlaybackProgress.formatProgressRange(session.positionMs, session.durationMs)
             session.isPaused -> "已暂停"
             session.isPlaying -> "正在朗读"
             else -> "已停止"

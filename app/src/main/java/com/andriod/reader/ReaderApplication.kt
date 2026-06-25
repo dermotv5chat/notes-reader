@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Build
 import android.util.Log
 import com.andriod.reader.service.TtsServiceEntryPoint
+import com.andriod.reader.ui.reader.MuyuKnockFeedback
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.HiltAndroidApp
 
@@ -32,6 +33,7 @@ class ReaderApplication : Application() {
         }.onFailure { error ->
             Log.w(TAG, "Diagnostic session header skipped", error)
         }
+        MuyuKnockFeedback.preload(this)
     }
 
     companion object {

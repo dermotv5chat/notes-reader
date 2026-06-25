@@ -50,10 +50,7 @@ class TtsPresynthJobManager @Inject constructor(
             return PresynthPrepareResult.AlreadyQueued
         }
 
-        val isActivePreparing = activeFileName != null &&
-            pipeline.progress.value.state == TtsPresynthUiState.Preparing
-
-        if (isActivePreparing) {
+        if (pipeline.isPrepareInProgress()) {
             if (activeFileName == fileName) {
                 return PresynthPrepareResult.Started
             }
@@ -109,10 +106,15 @@ class TtsPresynthJobManager @Inject constructor(
                 hint = queuedHint(position),
             )
         }
-        _jobs.value[fileName]?.takeIf {
-            it.uiState == TtsPresynthUiState.Preparing || it.uiState == TtsPresynthUiState.Queued
+        _jobs.value[fileName]?.takeIf { job ->
+            when (job.uiState) {
+                TtsPresynthUiState.Queued -> true
+                TtsPresynthUiState.Preparing ->
+                    activeFileName == fileName && pipeline.isPrepareInProgress()
+                else -> false
+            }
         }?.let { return it }
-        if (activeFileName == fileName && pipeline.progress.value.state == TtsPresynthUiState.Preparing) {
+        if (activeFileName == fileName && pipeline.isPrepareInProgress()) {
             val progress = pipeline.progress.value
             return PresynthJobState(
                 fileName = fileName,
@@ -144,6 +146,10 @@ class TtsPresynthJobManager @Inject constructor(
         plainText: String,
         forceRegenerate: Boolean,
     ) {
+        val previousActive = activeFileName
+        if (previousActive != null && previousActive != fileName) {
+            restoreCachedJobState(previousActive)
+        }
         activeFileName = fileName
         updateJob(
             fileName = fileName,
@@ -160,6 +166,15 @@ class TtsPresynthJobManager @Inject constructor(
             autoPlayWhenReady = false,
             onPrepareFailed = { message ->
                 finishJob(fileName, title, success = false, message = message)
+            },
+            onPrepareCancelled = {
+                if (activeFileName == fileName) {
+                    activeFileName = null
+                    progressCollectJob?.cancel()
+                    progressCollectJob = null
+                    restoreCachedJobState(fileName)
+                    startNextQueuedJob()
+                }
             },
         )
     }
@@ -219,6 +234,15 @@ class TtsPresynthJobManager @Inject constructor(
 
     private fun refreshQueuedJobStates() {
         val updated = _jobs.value.toMutableMap()
+        val queuedFileNames = queue.map { it.fileName }.toSet()
+        updated.keys.toList().forEach { key ->
+            val job = updated[key] ?: return@forEach
+            if (job.uiState == TtsPresynthUiState.Queued && key !in queuedFileNames) {
+                restoreCachedJobState(key)?.let { restored ->
+                    updated[key] = restored
+                } ?: updated.remove(key)
+            }
+        }
         queue.forEachIndexed { index, job ->
             updated[job.fileName] = PresynthJobState(
                 fileName = job.fileName,
@@ -230,24 +254,24 @@ class TtsPresynthJobManager @Inject constructor(
         _jobs.value = updated
     }
 
-    private fun restoreCachedJobState(fileName: String) {
+    private fun restoreCachedJobState(fileName: String): PresynthJobState? {
         val note = noteRepositoryPlainText(fileName)
         if (note == null) {
             _jobs.value = _jobs.value - fileName
-            return
+            return null
         }
         val (title, plain) = note
         val progress = pipeline.uiStateForPlainText(plain)
-        _jobs.value = _jobs.value + (
-            fileName to PresynthJobState(
-                fileName = fileName,
-                title = title,
-                uiState = progress.state,
-                hint = progress.hint,
-                chunkProgress = progress.chunkProgress,
-                progressFraction = progress.progressFraction,
-            )
-            )
+        val restored = PresynthJobState(
+            fileName = fileName,
+            title = title,
+            uiState = progress.state,
+            hint = progress.hint,
+            chunkProgress = progress.chunkProgress,
+            progressFraction = progress.progressFraction,
+        )
+        _jobs.value = _jobs.value + (fileName to restored)
+        return restored
     }
 
     private fun queuedHint(position: Int): String = "排队中（第 $position 位）"

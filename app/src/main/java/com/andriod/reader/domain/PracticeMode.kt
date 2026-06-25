@@ -22,5 +22,5 @@ fun PracticeEvent.isStatusEvent(): Boolean = when (this) {
     PracticeEvent.FOLLOWED,
     PracticeEvent.VIOLATED,
     -> true
-    PracticeEvent.COMMENT -> false
+    PracticeEvent.MUYU -> false
 }

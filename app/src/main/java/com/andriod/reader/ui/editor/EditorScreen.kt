@@ -32,17 +32,17 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.andriod.reader.ui.theme.LocalNoteEditorBackground
 
-private val ToolbarHeight = 48.dp
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(
     onDone: () -> Unit,
+    bottomObstruction: Dp = 0.dp,
     viewModel: EditorViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -51,6 +51,8 @@ fun EditorScreen(
     val lastSavedLabel = viewModel.formattedLastSavedAt()
     val showToolbar = uiState.bodyFocused
     val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    val toolbarBottom = EditorKeyboardLayout.toolbarBottomPadding(imeBottom, bottomObstruction)
+    val contentBottom = EditorKeyboardLayout.contentBottomPadding(imeBottom, showToolbar, bottomObstruction)
 
     Scaffold(
         modifier = Modifier.background(editorBackground),
@@ -81,9 +83,7 @@ fun EditorScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(
-                        bottom = if (showToolbar) imeBottom + ToolbarHeight else imeBottom,
-                    )
+                    .padding(bottom = contentBottom)
                     .verticalScroll(scrollState)
                     .padding(horizontal = 20.dp, vertical = 8.dp),
             ) {
@@ -168,7 +168,7 @@ fun EditorScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(bottom = imeBottom),
+                        .padding(bottom = toolbarBottom),
                 )
             }
         }

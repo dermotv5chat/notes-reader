@@ -27,7 +27,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -223,7 +222,7 @@ private fun PracticeStatusDot(
     val color = when (periodEntry?.event) {
         PracticeEvent.FOLLOWED -> MaterialTheme.colorScheme.primary
         PracticeEvent.VIOLATED -> MaterialTheme.colorScheme.error
-        PracticeEvent.COMMENT, null -> MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+        PracticeEvent.MUYU, null -> MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
     }
     Box(
         modifier = Modifier
@@ -289,6 +288,7 @@ internal fun PracticeSheetContent(
     var historyExpanded by remember(sheetState.blockId) {
         mutableStateOf(false)
     }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     pendingNoteEvent?.let { event ->
         PracticeNoteDialog(
@@ -387,17 +387,21 @@ internal fun PracticeSheetContent(
             )
         }
 
-        OutlinedButton(
-            onClick = { pendingNoteEvent = PracticeEvent.COMMENT },
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag(PracticeSheetTestTags.COMMENT_BUTTON),
-        ) {
-            Text("评论")
-        }
+        PracticeActionButton(
+            label = PracticeSheetLabels.muyuLabel(),
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+            onQuickTap = {
+                MuyuKnockFeedback.play(context)
+                onSave(PracticeEvent.MUYU, "")
+            },
+            onLongPressForNote = { pendingNoteEvent = PracticeEvent.MUYU },
+            modifier = Modifier.fillMaxWidth(),
+            testTag = PracticeSheetTestTags.MUYU_BUTTON,
+        )
 
         Text(
-            text = "轻点快记 · 长按可加备注 · 评论写想法",
+            text = "轻点快记 · 长按可加备注",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

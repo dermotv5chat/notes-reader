@@ -45,6 +45,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import java.time.Instant
 import javax.inject.Inject
@@ -129,7 +131,6 @@ class ReaderViewModel @Inject constructor(
     private var lastHostContext: Context? = null
     private var pendingStartAfterPermission = false
     private var lastPresynthState: TtsPresynthUiState = TtsPresynthUiState.Hidden
-    private var presynthCollectJob: Job? = null
     private var presynthJobsCollectJob: Job? = null
 
     companion object {
@@ -140,7 +141,9 @@ class ReaderViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             TtsPlaybackManager.session.collect { session ->
-                syncFromSession(session)
+                withContext(Dispatchers.Main.immediate) {
+                    syncFromSession(session)
+                }
             }
         }
         viewModelScope.launch {
@@ -240,18 +243,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun startPresynthProgressCollection() {
-        presynthCollectJob?.cancel()
         presynthJobsCollectJob?.cancel()
-        presynthCollectJob = viewModelScope.launch {
-            val progressFlow = TtsPlaybackManager.presynthProgress()
-            if (progressFlow != null) {
-                progressFlow.collect { progress ->
-                    syncPresynthProgress(progress)
-                }
-            } else {
-                syncPresynthStateForCurrentNote()
-            }
-        }
         presynthJobsCollectJob = viewModelScope.launch {
             TtsPlaybackManager.presynthJobs(context).collect {
                 syncPresynthStateForCurrentNote()
@@ -294,7 +286,6 @@ class ReaderViewModel @Inject constructor(
                 playbackMode = session.playbackMode,
             )
         }
-        TtsPlaybackManager.refreshSession()
     }
 
     private fun attachUiCallbacks() {
@@ -589,6 +580,9 @@ class ReaderViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(sleepTimerSliderMinutes = rounded.toFloat()) }
             TtsPlaybackManager.setSleepTimerMinutes(context, rounded)
+            if (rounded > 0) {
+                closeSleepTimer()
+            }
         }
     }
 
@@ -667,6 +661,7 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun onSpeechBackendChange(backend: TtsSpeechBackend) {
+        if (backend == _uiState.value.speechBackend) return
         viewModelScope.launch {
             diagnosticLog.i("Reader", "speechBackendChange -> $backend")
             settingsStore.saveTtsSpeechBackend(backend)

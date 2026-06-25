@@ -114,6 +114,20 @@ Box(Modifier.fillMaxSize().padding(padding)) {
 - [`app/src/main/java/com/andriod/reader/ui/Navigation.kt`](../app/src/main/java/com/andriod/reader/ui/Navigation.kt)
 - [`app/src/main/java/com/andriod/reader/ui/editor/EditorScreen.kt`](../app/src/main/java/com/andriod/reader/ui/editor/EditorScreen.kt)
 - [`app/src/main/java/com/andriod/reader/ui/editor/EditorFormattingToolbar.kt`](../app/src/main/java/com/andriod/reader/ui/editor/EditorFormattingToolbar.kt)
+- [`app/src/main/java/com/andriod/reader/ui/editor/EditorKeyboardLayout.kt`](../app/src/main/java/com/andriod/reader/ui/editor/EditorKeyboardLayout.kt) — 可单测的 inset 策略
+- [`app/src/test/java/com/andriod/reader/ui/editor/EditorKeyboardLayoutTest.kt`](../app/src/test/java/com/andriod/reader/ui/editor/EditorKeyboardLayoutTest.kt)
+
+## 回归记录（2026-06）
+
+设置页分层 / 编辑页迷你播放器支持时，[`Navigation.kt`](../app/src/main/java/com/andriod/reader/ui/Navigation.kt) 曾把 `navPadding` 写成 `(isEditor && !showMiniBar)`，在 TTS 迷你条可见时编辑页又叠了一层外层 padding，导致工具栏与键盘之间出现空档。
+
+修复要点：
+
+1. **编辑路由始终** `navPadding = PaddingValues()`（见 `EditorKeyboardLayout.shouldZeroNavPadding`）
+2. **编辑路由全程隐藏** `TtsMiniPlayerBar`，避免 `Scaffold.bottomBar` 占位（`shouldHideMiniBarOnEditor`）
+3. 布局偏移逻辑集中在 `EditorKeyboardLayout`，由单元测试覆盖
+
+后续改 Navigation 时勿再让 `showMiniBar` 参与编辑页的 navPadding 判断。
 
 ## 调试建议
 

@@ -65,17 +65,29 @@ fun TtsVoiceSettingsSection(
         ) {
             FilterChip(
                 selected = speechBackend == TtsSpeechBackend.SYSTEM,
-                onClick = { onSpeechBackendChange(TtsSpeechBackend.SYSTEM) },
+                onClick = {
+                    if (speechBackend != TtsSpeechBackend.SYSTEM) {
+                        onSpeechBackendChange(TtsSpeechBackend.SYSTEM)
+                    }
+                },
                 label = { Text("系统 TTS") },
             )
             FilterChip(
                 selected = speechBackend == TtsSpeechBackend.OFFLINE_SHERPA,
-                onClick = { onSpeechBackendChange(TtsSpeechBackend.OFFLINE_SHERPA) },
+                onClick = {
+                    if (speechBackend != TtsSpeechBackend.OFFLINE_SHERPA) {
+                        onSpeechBackendChange(TtsSpeechBackend.OFFLINE_SHERPA)
+                    }
+                },
                 label = { Text("离线高质量") },
             )
             FilterChip(
                 selected = speechBackend == TtsSpeechBackend.ONLINE_EDGE,
-                onClick = { onSpeechBackendChange(TtsSpeechBackend.ONLINE_EDGE) },
+                onClick = {
+                    if (speechBackend != TtsSpeechBackend.ONLINE_EDGE) {
+                        onSpeechBackendChange(TtsSpeechBackend.ONLINE_EDGE)
+                    }
+                },
                 label = { Text("在线高质量") },
             )
         }

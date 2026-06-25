@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.andriod.reader.data.local.StorageCategory
+import com.andriod.reader.domain.MuyuSoundPreset
 import com.andriod.reader.ui.theme.AppThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -116,6 +117,25 @@ fun ThemeModeSelector(
                         AppThemeMode.SYSTEM -> "跟随系统"
                     },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun MuyuSoundPresetSelector(
+    selected: MuyuSoundPreset,
+    onSelect: (MuyuSoundPreset) -> Unit,
+) {
+    val presets = MuyuSoundPreset.entries
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        presets.forEachIndexed { index, preset ->
+            SegmentedButton(
+                selected = selected == preset,
+                onClick = { onSelect(preset) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = presets.size),
+            ) {
+                Text(preset.label)
             }
         }
     }

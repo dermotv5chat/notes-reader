@@ -23,6 +23,7 @@ fun SettingsHomeScreen(
     onOpenTts: () -> Unit,
     onOpenSync: () -> Unit,
     onOpenMaintenance: () -> Unit,
+    onOpenFeedback: () -> Unit,
     onOpenPrinciplesGuide: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -69,6 +70,11 @@ fun SettingsHomeScreen(
                 title = "语音朗读",
                 subtitle = viewModel.ttsSummary(uiState),
                 onClick = onOpenTts,
+            )
+            SettingsNavRow(
+                title = "声音与震动",
+                subtitle = viewModel.feedbackSummary(uiState),
+                onClick = onOpenFeedback,
             )
             SettingsNavRow(
                 title = "GitHub 同步",

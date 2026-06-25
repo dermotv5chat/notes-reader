@@ -21,7 +21,7 @@ fun SettingsLifecycleEffects(
     LaunchedEffect(context) {
         viewModel.setHostContext(context)
         if (refreshTts) {
-            viewModel.refreshTtsInfo()
+            viewModel.syncTtsDiagnostics()
         }
         if (refreshMaintenance) {
             viewModel.refreshLogStats()
@@ -34,7 +34,7 @@ fun SettingsLifecycleEffects(
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.setHostContext(context)
                 if (refreshTts) {
-                    viewModel.refreshTtsInfo()
+                    viewModel.syncTtsDiagnostics()
                 }
                 if (refreshMaintenance) {
                     viewModel.refreshLogStats()

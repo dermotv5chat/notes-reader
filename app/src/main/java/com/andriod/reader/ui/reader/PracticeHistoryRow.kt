@@ -31,15 +31,11 @@ internal fun PracticeHistoryRow(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
 ) {
-    val eventLabel = when (entry.event) {
-        PracticeEvent.FOLLOWED -> "遵守"
-        PracticeEvent.VIOLATED -> "违背"
-        PracticeEvent.COMMENT -> "评论"
-    }
+    val eventLabel = PracticeSheetLabels.eventLabel(entry.event)
     val eventColor = when (entry.event) {
         PracticeEvent.FOLLOWED -> MaterialTheme.colorScheme.primary
         PracticeEvent.VIOLATED -> MaterialTheme.colorScheme.error
-        PracticeEvent.COMMENT -> MaterialTheme.colorScheme.onSurfaceVariant
+        PracticeEvent.MUYU -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val timeLabel = formatPracticeTime(entry)
     Column(

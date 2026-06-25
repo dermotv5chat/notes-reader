@@ -14,4 +14,25 @@ object TtsRemainingEstimate {
         val rate = speechRate.coerceAtLeast(0.5f)
         return maxOf(1, (chars / (CHARS_PER_MINUTE_AT_1X * rate)).toInt())
     }
+
+    fun estimateTotalDurationMs(
+        segments: List<String>,
+        speechRate: Float,
+    ): Long {
+        if (segments.isEmpty()) return 0L
+        val chars = segments.sumOf { it.length }
+        return estimateDurationMsForChars(chars, speechRate)
+    }
+
+    fun estimateSegmentDurationMs(
+        text: String,
+        speechRate: Float,
+    ): Long = estimateDurationMsForChars(text.length, speechRate)
+
+    fun estimateDurationMsForChars(chars: Int, speechRate: Float): Long {
+        if (chars <= 0) return 0L
+        val rate = speechRate.coerceAtLeast(0.5f)
+        val minutes = chars / (CHARS_PER_MINUTE_AT_1X * rate)
+        return (minutes * 60_000.0).toLong().coerceAtLeast(1_000L)
+    }
 }

@@ -28,11 +28,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.andriod.reader.domain.TtsSpeechBackend
+import com.andriod.reader.ui.tts.PresynthActionIcon
 import com.andriod.reader.util.NotificationPermission
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -150,6 +153,17 @@ fun ReaderScreen(
                 },
                 actions = {
                     uiState.note?.let { note ->
+                        val showPresynth = uiState.speechBackend == TtsSpeechBackend.ONLINE_EDGE ||
+                            uiState.speechBackend == TtsSpeechBackend.OFFLINE_SHERPA
+                        if (showPresynth) {
+                            PresynthActionIcon(
+                                state = uiState.presynthState,
+                                progressFraction = uiState.presynthProgressFraction,
+                                enabled = uiState.presynthButtonEnabled,
+                                onClick = viewModel::onPresynthClick,
+                                modifier = Modifier.testTag("reader_topbar_presynth_button"),
+                            )
+                        }
                         IconButton(
                             onClick = {
                                 if (!uiState.noteInQueue) {
@@ -192,7 +206,6 @@ fun ReaderScreen(
                 onOpenQueue = onOpenQueue,
                 onOpenTtsSettings = viewModel::openTtsSettings,
                 onOpenSleepTimer = viewModel::openSleepTimer,
-                onPresynthClick = viewModel::onPresynthClick,
                 onOpenNotificationSettings = viewModel::openNotificationSettings,
             )
         },

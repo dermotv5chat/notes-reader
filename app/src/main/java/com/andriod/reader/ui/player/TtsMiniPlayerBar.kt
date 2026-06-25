@@ -26,7 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.andriod.reader.service.TtsPlaybackMode
+import com.andriod.reader.service.TtsPlaybackProgress
 import com.andriod.reader.service.TtsPlaybackSession
 
 @Composable
@@ -38,32 +38,12 @@ fun TtsMiniPlayerBar(
     onTogglePlayPause: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val progress = if (session.segmentTotal > 0) {
-        (session.segmentIndex + 1).toFloat() / session.segmentTotal.toFloat()
-    } else {
-        0f
-    }
-    val subtitle = when {
-        session.presynthGenerating -> {
-            val base = when {
-                session.isPlaying && session.segmentTotal > 0 ->
-                    "段落 ${session.segmentIndex + 1} / ${session.segmentTotal}"
-                session.isPaused -> "已暂停"
-                else -> "正在朗读"
-            }
-            "$base · 生成中"
-        }
-        session.isPlaying && session.segmentTotal > 0 ->
-            buildString {
-                append("段落 ${session.segmentIndex + 1} / ${session.segmentTotal}")
-                session.playbackMode.displayLabel()?.let { append(" · $it") }
-            }
-        session.isPaused -> {
-            val mode = session.playbackMode.displayLabel()
-            if (mode != null) "已暂停 · $mode" else "已暂停"
-        }
-        else -> "正在朗读"
-    }
+    val hasTimedProgress = session.durationMs > 0
+    val showIndeterminateProgress = session.presynthGenerating && !hasTimedProgress
+    val showDeterminateProgress = hasTimedProgress || (
+        session.segmentTotal > 0 && !session.presynthGenerating
+        )
+    val subtitle = buildMiniPlayerSubtitle(session)
     val displaySubtitle = session.sleepTimerLabel?.takeIf { session.sleepTimerActive }?.let {
         "$subtitle · $it"
     } ?: subtitle
@@ -81,7 +61,7 @@ fun TtsMiniPlayerBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(onClick = onOpenReader)
-                    .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+                    .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
@@ -121,14 +101,15 @@ fun TtsMiniPlayerBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (queueCount > 0) {
-                    IconButton(onClick = onOpenQueue) {
-                        Icon(Icons.Default.List, contentDescription = "播放列表（$queueCount）")
-                    }
-                } else {
-                    IconButton(onClick = onOpenQueue) {
-                        Icon(Icons.Default.List, contentDescription = "播放列表")
-                    }
+                IconButton(onClick = onOpenQueue) {
+                    Icon(
+                        Icons.Default.List,
+                        contentDescription = if (queueCount > 0) {
+                            "播放列表（$queueCount）"
+                        } else {
+                            "播放列表"
+                        },
+                    )
                 }
                 IconButton(onClick = onTogglePlayPause) {
                     Icon(
@@ -137,20 +118,86 @@ fun TtsMiniPlayerBar(
                     )
                 }
             }
-            if (session.segmentTotal > 0 || session.presynthGenerating) {
-                if (session.presynthGenerating && session.segmentTotal == 0) {
+            if (showIndeterminateProgress || showDeterminateProgress) {
+                if (showIndeterminateProgress) {
                     LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
                         trackColor = MaterialTheme.colorScheme.surfaceVariant,
                     )
                 } else {
-                    LinearProgressIndicator(
-                        progress = { progress.coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth(),
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                    MiniPlayerProgressRow(
+                        positionMs = session.positionMs,
+                        durationMs = session.durationMs,
+                        progressFraction = session.progressFraction,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 0.dp)
+                            .padding(bottom = 10.dp),
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun MiniPlayerProgressRow(
+    positionMs: Long,
+    durationMs: Long,
+    progressFraction: Float,
+    modifier: Modifier = Modifier,
+) {
+    val positionLabel = if (durationMs > 0) {
+        TtsPlaybackProgress.formatPlaybackTime(positionMs)
+    } else {
+        "--:--"
+    }
+    val durationLabel = if (durationMs > 0) {
+        TtsPlaybackProgress.formatPlaybackTime(durationMs)
+    } else {
+        "--:--"
+    }
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = positionLabel,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LinearProgressIndicator(
+            progress = { progressFraction.coerceIn(0f, 1f) },
+            modifier = Modifier.weight(1f),
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        )
+        Text(
+            text = durationLabel,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun buildMiniPlayerSubtitle(session: TtsPlaybackSession): String = when {
+    session.presynthGenerating -> {
+        val base = when {
+            session.isPaused -> "已暂停"
+            session.isPlaying -> "正在朗读"
+            else -> "正在朗读"
+        }
+        "$base · 生成中"
+    }
+    session.isPaused -> {
+        val mode = session.playbackMode.displayLabel()
+        if (mode != null) "已暂停 · $mode" else "已暂停"
+    }
+    session.isPlaying -> {
+        val mode = session.playbackMode.displayLabel()
+        if (mode != null) "正在朗读 · $mode" else "正在朗读"
+    }
+    else -> "正在朗读"
 }

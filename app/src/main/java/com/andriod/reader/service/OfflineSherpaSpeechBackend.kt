@@ -147,6 +147,10 @@ class OfflineSherpaSpeechBackend(
         synthesizer.release()
     }
 
+    fun currentPositionMs(): Long = player.currentPositionMs()
+
+    fun currentDurationMs(): Long = player.durationMs()
+
     override fun diagnostics(): TtsHelper.TtsDiagnostics {
         val pack = modelManager.currentPack()
         val installed = modelManager.isPackInstalled(pack)

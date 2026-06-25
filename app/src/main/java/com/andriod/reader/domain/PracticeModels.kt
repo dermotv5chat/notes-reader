@@ -5,7 +5,7 @@ import java.time.Instant
 enum class PracticeEvent {
     FOLLOWED,
     VIOLATED,
-    COMMENT,
+    MUYU,
 }
 
 /** Latest practice summary for a block in the current period (used for status dots). */
@@ -24,7 +24,8 @@ data class PracticeLogEntry(
 fun parsePracticeEvent(raw: String): PracticeEvent? = when (raw) {
     "FOLLOWED" -> PracticeEvent.FOLLOWED
     "VIOLATED" -> PracticeEvent.VIOLATED
-    "COMMENT" -> PracticeEvent.COMMENT
+    "MUYU" -> PracticeEvent.MUYU
+    "COMMENT" -> PracticeEvent.MUYU
     "PARTIAL" -> PracticeEvent.FOLLOWED
     "NOT_ENCOUNTERED" -> null
     else -> runCatching { PracticeEvent.valueOf(raw) }.getOrNull()

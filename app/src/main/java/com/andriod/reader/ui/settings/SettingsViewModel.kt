@@ -11,6 +11,7 @@ import com.andriod.reader.data.local.StorageCategory
 import com.andriod.reader.data.remote.SettingsStore
 import com.andriod.reader.data.repository.SyncRepository
 import com.andriod.reader.domain.GitHubSettings
+import com.andriod.reader.domain.MuyuSoundPreset
 import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.domain.TtsVoiceOption
 import com.andriod.reader.domain.TtsVoicePreference
@@ -22,6 +23,7 @@ import com.andriod.reader.service.synthesis.SherpaDownloadPhase
 import com.andriod.reader.service.synthesis.SherpaDownloadProgress
 import com.andriod.reader.service.synthesis.SherpaModelCatalog
 import com.andriod.reader.service.synthesis.SherpaModelDownloadCoordinator
+import com.andriod.reader.ui.reader.MuyuKnockFeedback
 import com.andriod.reader.ui.theme.AppThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -77,6 +79,9 @@ data class SettingsUiState(
     val sherpaDownloadProgress: Float? = null,
     val sherpaDownloadPhase: SherpaDownloadPhase = SherpaDownloadPhase.Idle,
     val sherpaDownloadBytesLabel: String? = null,
+    val muyuSoundEnabled: Boolean = true,
+    val muyuVibrationEnabled: Boolean = true,
+    val muyuSoundPreset: MuyuSoundPreset = MuyuSoundPreset.DEFAULT,
 )
 
 @HiltViewModel
@@ -122,6 +127,9 @@ class SettingsViewModel @Inject constructor(
             installedSherpaPackIds = sherpaDownloadCoordinator.installedPackIds(),
             selectedSherpaSpeakerId = settingsStore.getSherpaSpeakerId(),
             sherpaModelInstalled = sherpaDownloadCoordinator.isCurrentPackInstalled(),
+            muyuSoundEnabled = settingsStore.isMuyuSoundEnabled(),
+            muyuVibrationEnabled = settingsStore.isMuyuVibrationEnabled(),
+            muyuSoundPreset = settingsStore.getMuyuSoundPreset(),
         )
     }
 
@@ -131,6 +139,25 @@ class SettingsViewModel @Inject constructor(
     fun onSpeechRateChange(value: Float) = _uiState.update { it.copy(speechRate = value, saved = false) }
     fun onSpeechPitchChange(value: Float) = _uiState.update { it.copy(speechPitch = value, saved = false) }
     fun onKeepScreenOnChange(value: Boolean) = _uiState.update { it.copy(keepScreenOn = value, saved = false) }
+
+    fun onMuyuSoundEnabledChange(value: Boolean) {
+        settingsStore.setMuyuSoundEnabled(value)
+        _uiState.update { it.copy(muyuSoundEnabled = value) }
+    }
+
+    fun onMuyuVibrationEnabledChange(value: Boolean) {
+        settingsStore.setMuyuVibrationEnabled(value)
+        _uiState.update { it.copy(muyuVibrationEnabled = value) }
+    }
+
+    fun onMuyuSoundPresetChange(preset: MuyuSoundPreset) {
+        settingsStore.setMuyuSoundPreset(preset)
+        _uiState.update { it.copy(muyuSoundPreset = preset) }
+    }
+
+    fun previewMuyuSound() {
+        MuyuKnockFeedback.previewSound(ttsContext())
+    }
 
     fun onThemeModeChange(mode: AppThemeMode) {
         settingsStore.saveAppThemeMode(mode)
@@ -158,6 +185,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun onSpeechBackendChange(backend: TtsSpeechBackend) {
+        if (backend == _uiState.value.speechBackend) return
         viewModelScope.launch {
             settingsStore.saveTtsSpeechBackend(backend)
             TtsPlaybackManager.getOrNull()?.applySpeechBackend(backend)
@@ -228,6 +256,27 @@ class SettingsViewModel @Inject constructor(
             }
             val controller = TtsPlaybackManager.getOrNull() ?: TtsPlaybackManager.awaitReady(ttsContext())
             controller.previewSample()
+        }
+    }
+
+    fun syncTtsDiagnostics() {
+        viewModelScope.launch {
+            val controller = TtsPlaybackManager.getOrNull()
+            if (controller != null && controller.isReady()) {
+                updateDiagnostics(controller)
+            } else {
+                _uiState.update {
+                    it.copy(
+                        speechBackend = settingsStore.getTtsSpeechBackend(),
+                        sherpaModelPacks = sherpaDownloadCoordinator.catalog(),
+                        selectedSherpaPackId = settingsStore.getSherpaModelPackId(),
+                        installedSherpaPackIds = sherpaDownloadCoordinator.installedPackIds(),
+                        selectedSherpaSpeakerId = settingsStore.getSherpaSpeakerId(),
+                        sherpaModelInstalled = TtsPlaybackManager.sherpaModelInstalled() ||
+                            sherpaDownloadCoordinator.isCurrentPackInstalled(),
+                    )
+                }
+            }
         }
     }
 
@@ -561,6 +610,9 @@ class SettingsViewModel @Inject constructor(
         val sizeLabel = formatStorageSizeForSummary(state.storageTotalBytes)
         return "占用约 $sizeLabel · 日志 ${state.logLineCount} 行"
     }
+
+    fun feedbackSummary(state: SettingsUiState = _uiState.value): String =
+        feedbackSummaryFor(state)
 
     private fun formatStorageSizeForSummary(bytes: Long): String {
         if (bytes < 1024) return "$bytes B"

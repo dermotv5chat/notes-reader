@@ -68,7 +68,7 @@ internal class TtsSleepTimer(
     private val onExpired: () -> Unit,
 ) {
     private val appContext = context.applicationContext
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val wakeLock = TtsWakeLock(appContext)
     private var mode = SleepTimerMode.Off
     private var deadlineElapsedRealtime = 0L

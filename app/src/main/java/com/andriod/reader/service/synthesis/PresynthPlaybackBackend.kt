@@ -35,8 +35,10 @@ class PresynthPlaybackBackend(
         onChunkChanged: (Int, Int) -> Unit,
         onAllDone: () -> Unit,
         onError: (String) -> Unit,
+        chunkDurationsMs: List<Long> = emptyList(),
     ) {
         player.setSpeechRate(speechRate)
+        player.setChunkDurationsMs(chunkDurationsMs)
         if (result.audioFiles.size == 1) {
             player.play(
                 file = result.audioFiles.first(),
@@ -69,6 +71,14 @@ class PresynthPlaybackBackend(
     }
 
     fun isPaused(): Boolean = player.isPaused()
+
+    fun setChunkDurationsMs(durations: List<Long>) = player.setChunkDurationsMs(durations)
+
+    fun currentPositionMs(): Long = player.currentPositionMs()
+
+    fun overallPositionMs(): Long = player.overallPositionMs()
+
+    fun overallDurationMs(): Long = player.overallDurationMs()
 
     fun release() = player.release()
 }

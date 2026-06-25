@@ -26,6 +26,7 @@ class ExoPlayerSpeechPlayer(
     private var deleteAfterComplete = true
     private var playlistFiles: List<File> = emptyList()
     private var playlistIndex = 0
+    private var chunkDurationsMs: List<Long> = emptyList()
     private var paused = false
 
     private val listener = object : Player.Listener {
@@ -126,6 +127,7 @@ class ExoPlayerSpeechPlayer(
         this.deleteAfterComplete = deleteAfterComplete
         playlistFiles = valid
         playlistIndex = 0
+        chunkDurationsMs = emptyList()
         paused = false
         diagnosticLog?.i("ExoPlayer", "play playlist utterance=$utteranceId files=${valid.size}")
         playCurrentInPlaylist()
@@ -160,6 +162,7 @@ class ExoPlayerSpeechPlayer(
         }
         playlistFiles = emptyList()
         playlistIndex = 0
+        chunkDurationsMs = emptyList()
         onDone = null
         onError = null
         onChunkAdvanced = null
@@ -178,10 +181,27 @@ class ExoPlayerSpeechPlayer(
 
     fun isPaused(): Boolean = paused
 
+    fun setChunkDurationsMs(durations: List<Long>) {
+        chunkDurationsMs = durations
+    }
+
     fun currentPositionMs(): Long = player?.currentPosition ?: 0L
 
     fun durationMs(): Long {
         val duration = player?.duration ?: 0L
         return if (duration > 0) duration else 0L
+    }
+
+    fun currentChunkIndex(): Int = playlistIndex
+
+    fun overallPositionMs(): Long {
+        val prior = chunkDurationsMs.take(playlistIndex).sum()
+        return prior + currentPositionMs()
+    }
+
+    fun overallDurationMs(): Long {
+        val cachedTotal = chunkDurationsMs.sum()
+        if (cachedTotal > 0) return cachedTotal
+        return if (playlistFiles.size <= 1) durationMs() else 0L
     }
 }

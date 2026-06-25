@@ -4,7 +4,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -99,11 +98,40 @@ class PracticeSheetTest {
 
         composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_FIELD, useUnmergedTree = true)
             .assertDoesNotExist()
-        composeRule.onNodeWithText("轻点快记 · 长按可加备注 · 评论写想法").assertIsDisplayed()
+        composeRule.onNodeWithText("轻点快记 · 长按可加备注").assertIsDisplayed()
     }
 
     @Test
-    fun practiceSheetContent_commentButtonOpensNoteDialog() {
+    fun practiceSheetContent_muyuButtonQuickTapSavesWithoutNote() {
+        var savedEvent: PracticeEvent? = null
+        var savedNote: String? = null
+        composeRule.setContent {
+            CompositionLocalProvider(LocalInspectionMode provides true) {
+                MaterialTheme {
+                    PracticeSheetContent(
+                        sheetState = PracticeSheetState(
+                            blockId = "id1",
+                            blockLabel = "测试准则",
+                        ),
+                        onSave = { event, note ->
+                            savedEvent = event
+                            savedNote = note
+                        },
+                        onClear = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(PracticeSheetTestTags.MUYU_BUTTON, useUnmergedTree = true)
+            .performClick()
+
+        assertEquals(PracticeEvent.MUYU, savedEvent)
+        assertEquals("", savedNote)
+    }
+
+    @Test
+    fun practiceSheetContent_muyuButtonLongPressOpensNoteDialog() {
         composeRule.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 MaterialTheme {
@@ -119,19 +147,24 @@ class PracticeSheetTest {
             }
         }
 
-        composeRule.onNodeWithTag(PracticeSheetTestTags.COMMENT_BUTTON, useUnmergedTree = true)
-            .performClick()
-        composeRule.onNodeWithText("写评论").assertIsDisplayed()
+        composeRule.onNodeWithTag(PracticeSheetTestTags.MUYU_BUTTON, useUnmergedTree = true)
+            .performTouchInput {
+                down(center)
+                advanceEventTime(500)
+                up()
+            }
+        composeRule.onNodeWithText("添加备注").assertIsDisplayed()
     }
 
     @Test
-    fun practiceNoteDialog_commentRequiresNonEmptyNote() {
+    fun practiceNoteDialog_muyuAllowsEmptyNote() {
+        var savedNote: String? = null
         composeRule.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 MaterialTheme {
                     PracticeNoteDialog(
-                        event = PracticeEvent.COMMENT,
-                        onConfirm = {},
+                        event = PracticeEvent.MUYU,
+                        onConfirm = { savedNote = it },
                         onDismiss = {},
                     )
                 }
@@ -139,21 +172,18 @@ class PracticeSheetTest {
         }
 
         composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_CONFIRM_BUTTON, useUnmergedTree = true)
-            .assertIsNotEnabled()
-        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_FIELD, useUnmergedTree = true)
-            .performTextInput("有感而发")
-        composeRule.onNodeWithTag(PracticeSheetTestTags.NOTE_CONFIRM_BUTTON, useUnmergedTree = true)
-            .assertIsDisplayed()
+            .performClick()
+        assertEquals("", savedNote)
     }
 
     @Test
-    fun practiceNoteDialog_commentConfirmSavesNote() {
+    fun practiceNoteDialog_muyuConfirmSavesNote() {
         var savedNote: String? = null
         composeRule.setContent {
             CompositionLocalProvider(LocalInspectionMode provides true) {
                 MaterialTheme {
                     PracticeNoteDialog(
-                        event = PracticeEvent.COMMENT,
+                        event = PracticeEvent.MUYU,
                         onConfirm = { savedNote = it },
                         onDismiss = {},
                     )
@@ -352,6 +382,7 @@ class PracticeSheetTest {
             .assertIsDisplayed()
         composeRule.onNodeWithText("遵守").assertIsDisplayed()
         composeRule.onNodeWithText("违背").assertIsDisplayed()
+        composeRule.onNodeWithText("敲一下").assertIsDisplayed()
     }
 
     @Test
@@ -374,6 +405,7 @@ class PracticeSheetTest {
 
         composeRule.onNodeWithText("遵守").assertIsDisplayed()
         composeRule.onNodeWithText("违背").assertIsDisplayed()
+        composeRule.onNodeWithText("敲一下").assertIsDisplayed()
     }
 
     @Test

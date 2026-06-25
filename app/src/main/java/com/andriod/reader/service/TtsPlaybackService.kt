@@ -1,5 +1,6 @@
 package com.andriod.reader.service
 
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.ComponentName
@@ -20,14 +21,18 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class TtsPlaybackService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var mediaSession: MediaSessionCompat? = null
     private var foregroundPromoted = false
     private var stopSelfJob: Job? = null
+    private var lastMetadataKey: MetadataKey? = null
+    private var lastPlaybackStateKey: PlaybackStateKey? = null
+    private var lastNotificationKey: NotificationKey? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -43,7 +48,7 @@ class TtsPlaybackService : Service() {
         }
         ensureForegroundStarted()
         serviceScope.launch {
-            TtsPlaybackManager.session.collectLatest { session ->
+            TtsPlaybackManager.session.collect { session ->
                 updateForeground(session)
             }
         }
@@ -61,7 +66,7 @@ class TtsPlaybackService : Service() {
             ACTION_ENSURE_STARTED -> {
                 val session = TtsPlaybackManager.session.value
                 if (session.hasActiveSession) {
-                    startForegroundWith(session)
+                    deliverNotification(session, force = true)
                 }
             }
             Intent.ACTION_MEDIA_BUTTON -> {
@@ -119,27 +124,40 @@ class TtsPlaybackService : Service() {
             "ensureForegroundStarted active=${session.hasActiveSession} promoted=$foregroundPromoted",
         )
         if (session.hasActiveSession) {
-            startForegroundWith(session)
+            deliverNotification(session, force = true)
         } else {
             startForegroundPlaceholder()
         }
     }
 
     private fun updateForeground(session: TtsPlaybackSession) {
-        updateMetadata(session)
-        updatePlaybackState(session)
+        val metadataKey = metadataKey(session)
+        if (session.hasActiveSession && metadataKey != lastMetadataKey) {
+            updateMetadata(session)
+            lastMetadataKey = metadataKey
+        }
+
+        val playbackKey = playbackStateKey(session)
+        if (session.hasActiveSession && (playbackKey != lastPlaybackStateKey || session.isPlaying)) {
+            updatePlaybackState(session)
+            lastPlaybackStateKey = playbackKey
+        }
+
         if (session.hasActiveSession) {
             cancelDeferredStopSelf()
-            startForegroundWith(session)
+            deliverNotification(session)
         } else {
             stopForegroundIfIdle()
+            lastMetadataKey = null
+            lastPlaybackStateKey = null
+            lastNotificationKey = null
         }
     }
 
     private fun updateMetadata(session: TtsPlaybackSession) {
         if (!session.hasActiveSession) return
-        val artist = if (session.segmentTotal > 0) {
-            "段落 ${session.segmentIndex + 1} / ${session.segmentTotal}"
+        val artist = if (session.durationMs > 0) {
+            TtsPlaybackProgress.formatProgressRange(session.positionMs, session.durationMs)
         } else {
             "笔记朗读"
         }
@@ -170,22 +188,46 @@ class TtsPlaybackService : Service() {
                         or PlaybackStateCompat.ACTION_STOP
                         or PlaybackStateCompat.ACTION_PLAY_PAUSE,
                 )
-                .setState(state, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1f)
+                .setState(
+                    state,
+                    session.positionMs.coerceAtLeast(0L),
+                    if (session.isPlaying) 1f else 0f,
+                )
                 .build(),
         )
     }
 
-    private fun startForegroundWith(session: TtsPlaybackSession) {
+    private fun deliverNotification(session: TtsPlaybackSession, force: Boolean = false) {
+        val key = notificationKey(session)
+        if (!force && key == lastNotificationKey && foregroundPromoted) return
+        lastNotificationKey = key
+
         val token = mediaSession?.sessionToken
-        if (token != null) {
-            val notification = TtsNotificationHelper.buildNotification(this, session, token)
-            promoteToForeground(notification)
-        } else {
+        if (token == null) {
             startForegroundPlaceholder()
+            return
+        }
+        val deliverKey = key
+        val sessionSnapshot = session
+        serviceScope.launch(Dispatchers.Default) {
+            val notification = TtsNotificationHelper.buildNotification(
+                this@TtsPlaybackService,
+                sessionSnapshot,
+                token,
+            )
+            withContext(Dispatchers.Main.immediate) {
+                if (lastNotificationKey != deliverKey) return@withContext
+                if (foregroundPromoted) {
+                    notificationManager().notify(TtsNotificationHelper.NOTIFICATION_ID, notification)
+                } else {
+                    promoteToForeground(notification)
+                }
+            }
         }
     }
 
     private fun startForegroundPlaceholder() {
+        lastNotificationKey = null
         val notification = TtsNotificationHelper.buildPlaceholderNotification(
             context = this,
             sessionToken = mediaSession?.sessionToken,
@@ -214,10 +256,14 @@ class TtsPlaybackService : Service() {
             TAG,
             "stopForegroundIfIdle promoted=$foregroundPromoted delayMs=$stopSelfDelayMs",
         )
-        if (foregroundPromoted) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        foregroundPromoted = false
+        lastNotificationKey = null
         scheduleStopSelf(stopSelfDelayMs)
+    }
+
+    private fun notificationManager(): NotificationManager {
+        return getSystemService(NotificationManager::class.java)
     }
 
     private fun scheduleStopSelf(delayMs: Long) {
@@ -235,6 +281,58 @@ class TtsPlaybackService : Service() {
         stopSelfJob?.cancel()
         stopSelfJob = null
     }
+
+    private fun metadataKey(session: TtsPlaybackSession): MetadataKey = MetadataKey(
+        title = session.title,
+        segmentIndex = session.segmentIndex,
+        segmentTotal = session.segmentTotal,
+        playbackMode = session.playbackMode,
+    )
+
+    private fun playbackStateKey(session: TtsPlaybackSession): PlaybackStateKey = PlaybackStateKey(
+        isPlaying = session.isPlaying,
+        isPaused = session.isPaused,
+        hasActiveSession = session.hasActiveSession,
+    )
+
+    private fun notificationKey(session: TtsPlaybackSession): NotificationKey = NotificationKey(
+        title = session.title,
+        fileName = session.fileName,
+        isPlaying = session.isPlaying,
+        isPaused = session.isPaused,
+        segmentIndex = session.segmentIndex,
+        segmentTotal = session.segmentTotal,
+        playbackMode = session.playbackMode,
+        sleepTimerMode = session.sleepTimerMode,
+        sleepTimerLabel = session.sleepTimerLabel,
+        hasActiveSession = session.hasActiveSession,
+    )
+
+    private data class MetadataKey(
+        val title: String?,
+        val segmentIndex: Int,
+        val segmentTotal: Int,
+        val playbackMode: TtsPlaybackMode,
+    )
+
+    private data class PlaybackStateKey(
+        val isPlaying: Boolean,
+        val isPaused: Boolean,
+        val hasActiveSession: Boolean,
+    )
+
+    private data class NotificationKey(
+        val title: String?,
+        val fileName: String?,
+        val isPlaying: Boolean,
+        val isPaused: Boolean,
+        val segmentIndex: Int,
+        val segmentTotal: Int,
+        val playbackMode: TtsPlaybackMode,
+        val sleepTimerMode: SleepTimerMode,
+        val sleepTimerLabel: String?,
+        val hasActiveSession: Boolean,
+    )
 
     private fun diagnosticLog(): AppDiagnosticLog {
         return EntryPointAccessors.fromApplication(

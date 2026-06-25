@@ -56,7 +56,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.andriod.reader.domain.TtsSpeechBackend
 import com.andriod.reader.service.TtsPlaybackMode
-import com.andriod.reader.ui.tts.PresynthActionIcon
 import com.andriod.reader.ui.tts.TtsVoiceSettingsSection
 import com.andriod.reader.domain.TtsQueueRepeatMode
 import com.andriod.reader.service.SleepTimerDisplay
@@ -72,7 +71,6 @@ fun ReaderPlaybackBar(
     onOpenQueue: () -> Unit,
     onOpenTtsSettings: () -> Unit,
     onOpenSleepTimer: () -> Unit,
-    onPresynthClick: () -> Unit = {},
     onOpenNotificationSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -100,16 +98,19 @@ fun ReaderPlaybackBar(
             }
         }
         val modeLabel = uiState.playbackMode.displayLabel()
-        if (modeLabel != null || uiState.segmentTotal > 1) {
+        val playingOtherNote = uiState.backgroundNoteTitle != null
+        val showSegmentInModeRow = !playingOtherNote && uiState.segmentTotal > 1
+        if (modeLabel != null || showSegmentInModeRow) {
             Row(
                 modifier = Modifier.padding(bottom = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (uiState.segmentTotal > 1) {
+                if (showSegmentInModeRow) {
                     Text(
                         text = "段落 ${uiState.segmentIndex + 1} / ${uiState.segmentTotal}",
                         style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.testTag("reader_segment_progress"),
                     )
                 }
                 modeLabel?.let { label ->
@@ -151,7 +152,7 @@ fun ReaderPlaybackBar(
                     modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
-            uiState.backgroundNoteTitle != null -> {
+            playingOtherNote -> {
                 Text(
                     "正在朗读「${uiState.backgroundNoteTitle}」",
                     style = MaterialTheme.typography.bodySmall,
@@ -162,16 +163,11 @@ fun ReaderPlaybackBar(
                     Text(
                         "段落 ${uiState.segmentIndex + 1} / ${uiState.segmentTotal}",
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(bottom = 4.dp),
+                        modifier = Modifier
+                            .padding(bottom = 4.dp)
+                            .testTag("reader_segment_progress"),
                     )
                 }
-            }
-            uiState.segmentTotal > 1 -> {
-                Text(
-                    "段落 ${uiState.segmentIndex + 1} / ${uiState.segmentTotal}",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 4.dp),
-                )
             }
         }
         sleepTimerStatusLabel(uiState)?.let { label ->
@@ -245,15 +241,6 @@ fun ReaderPlaybackBar(
             }
             IconButton(onClick = onOpenTtsSettings, enabled = uiState.isTtsReady) {
                 Icon(Icons.Default.Tune, contentDescription = "朗读设置")
-            }
-            if (showPresynth) {
-                PresynthActionIcon(
-                    state = uiState.presynthState,
-                    progressFraction = uiState.presynthProgressFraction,
-                    enabled = uiState.presynthButtonEnabled,
-                    onClick = onPresynthClick,
-                    modifier = Modifier.testTag("reader_presynth_button"),
-                )
             }
         }
     }
